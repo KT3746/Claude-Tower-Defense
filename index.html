@@ -515,10 +515,10 @@
   };
 
   const ENEMY_TYPES = {
-    goblin:{name:"Trasgo", hp:18, speed:62, armor:0, reward:5, dmg:1, color:"#5c7a3e", dark:"#3e5629", radius:11},
-    orc:{name:"Orc", hp:48, speed:44, armor:1, reward:9, dmg:2, color:"#7a6a35", dark:"#584c22", radius:14},
-    knight:{name:"Cavaleiro Renegado", hp:120, speed:34, armor:3, reward:18, dmg:3, color:"#8b8578", dark:"#5f594c", radius:15},
-    warlord:{name:"Chefe de Guerra", hp:420, speed:28, armor:4, reward:60, dmg:6, color:"#7a2020", dark:"#4d1414", radius:21}
+    goblin:{name:"Trasgo", hp:18, speed:62, armor:0, reward:5, dmg:1, color:"#5c7a3e", dark:"#3e5629", radius:11, topOffset:40},
+    orc:{name:"Orc", hp:48, speed:44, armor:1, reward:9, dmg:2, color:"#7a6a35", dark:"#584c22", radius:15, topOffset:54},
+    knight:{name:"Cavaleiro Renegado", hp:120, speed:34, armor:3, reward:18, dmg:3, color:"#8b8578", dark:"#5f594c", radius:16, topOffset:66},
+    warlord:{name:"Chefe de Guerra", hp:420, speed:28, armor:4, reward:60, dmg:6, color:"#7a2020", dark:"#4d1414", radius:24, topOffset:84}
   };
 
   function generateWave(n){
@@ -819,6 +819,185 @@
   }
 
   // ============================================================
+  // Enemy character sprites: procedurally painted once at load (a small
+  // walk-cycle sheet per type), then just drawImage'd at runtime. This is
+  // cheaper than redrawing limbs live every frame, and lets us afford much
+  // more detail (gradients, weapons, silhouettes) with zero per-frame cost
+  // and no external image files.
+  // ============================================================
+  const ENEMY_FRAME_W = 64, ENEMY_FRAME_H = 100, ENEMY_FRAMES = 6;
+  const ENEMY_ANCHOR_X = ENEMY_FRAME_W/2, ENEMY_ANCHOR_Y = ENEMY_FRAME_H-8;
+  const ENEMY_DRAW_SCALE = 0.8;
+
+  function lighten(hex, amt){
+    const n = parseInt(hex.slice(1),16);
+    const r = Math.min(255,(n>>16)+amt), gg = Math.min(255,((n>>8)&255)+amt), b = Math.min(255,(n&255)+amt);
+    return "rgb("+r+","+gg+","+b+")";
+  }
+
+  // Draws one limb as a rounded stroke pivoting at (hipX,hipY); `atEnd`, if
+  // given, runs with the transform still positioned at the limb's tip (for
+  // attaching a weapon/prop to the hand).
+  function limb(g, hipX, hipY, len, width, angle, color, atEnd){
+    g.save();
+    g.translate(hipX, hipY);
+    g.rotate(angle);
+    g.strokeStyle = color; g.lineWidth = width; g.lineCap = "round";
+    g.beginPath(); g.moveTo(0,0); g.lineTo(0,len); g.stroke();
+    if(atEnd){ g.translate(0,len); atEnd(g); }
+    g.restore();
+  }
+
+  function paintGoblinFrame(g, phase, color, dark){
+    const legSwing = Math.sin(phase)*0.5, armSwing = -Math.sin(phase)*0.5;
+    const bob = Math.abs(Math.sin(phase))*2;
+    g.save();
+    g.translate(0,-bob);
+    limb(g,-4,-16,14,4, legSwing, dark);
+    limb(g,4,-16,14,4, -legSwing, dark);
+    g.save();
+    g.rotate(0.1);
+    const grad = g.createLinearGradient(-8,-30,8,-16);
+    grad.addColorStop(0, lighten(color,15)); grad.addColorStop(1, dark);
+    g.fillStyle = grad;
+    g.beginPath(); g.moveTo(-7,-16); g.lineTo(-8,-30); g.lineTo(8,-30); g.lineTo(7,-16); g.closePath(); g.fill();
+    g.restore();
+    limb(g,-7,-28,11,3.4, armSwing+0.3, color);
+    limb(g,7,-28,11,3.4, -armSwing-0.1, color, (g2)=>{
+      g2.strokeStyle = "#b3a686"; g2.lineWidth = 2;
+      g2.beginPath(); g2.moveTo(0,0); g2.lineTo(0,9); g2.stroke();
+    });
+    g.fillStyle = "#4a5c34";
+    g.beginPath(); g.arc(0,-34,7,0,Math.PI*2); g.fill();
+    g.beginPath(); g.moveTo(-6,-35); g.lineTo(-13,-38); g.lineTo(-6,-31); g.closePath(); g.fill();
+    g.beginPath(); g.moveTo(6,-35); g.lineTo(13,-38); g.lineTo(6,-31); g.closePath(); g.fill();
+    g.restore();
+  }
+
+  function paintOrcFrame(g, phase, color, dark){
+    const legSwing = Math.sin(phase)*0.4, armSwing = -Math.sin(phase)*0.35;
+    const bob = Math.abs(Math.sin(phase))*1.6;
+    g.save();
+    g.translate(0,-bob);
+    limb(g,-6,-18,17,6, legSwing, dark);
+    limb(g,6,-18,17,6, -legSwing, dark);
+    const grad = g.createLinearGradient(-12,-38,12,-18);
+    grad.addColorStop(0, lighten(color,18)); grad.addColorStop(1, dark);
+    g.fillStyle = grad;
+    g.beginPath(); g.moveTo(-11,-18); g.lineTo(-12,-38); g.lineTo(12,-38); g.lineTo(11,-18); g.closePath(); g.fill();
+    g.fillStyle = "#2a251d"; g.fillRect(-11,-21,22,3);
+    limb(g,-11,-36,13,5, armSwing+0.2, color);
+    limb(g,11,-36,13,5, -armSwing-0.15, color, (g2)=>{
+      g2.strokeStyle = "#847c62"; g2.lineWidth = 3;
+      g2.beginPath(); g2.moveTo(0,0); g2.lineTo(0,10); g2.stroke();
+      g2.fillStyle = "#5f5847";
+      g2.beginPath(); g2.moveTo(1.5,1); g2.lineTo(10,4); g2.lineTo(9,11); g2.lineTo(1.5,8); g2.closePath(); g2.fill();
+    });
+    g.fillStyle = "#5c6a3a";
+    g.beginPath(); g.arc(0,-43,8.5,0,Math.PI*2); g.fill();
+    g.fillStyle = "#e8e2d0";
+    g.beginPath(); g.moveTo(-4,-40); g.lineTo(-7,-36); g.lineTo(-2,-38); g.closePath(); g.fill();
+    g.beginPath(); g.moveTo(4,-40); g.lineTo(7,-36); g.lineTo(2,-38); g.closePath(); g.fill();
+    g.restore();
+  }
+
+  function paintKnightFrame(g, phase, color, dark){
+    const legSwing = Math.sin(phase)*0.3, armSwing = -Math.sin(phase)*0.25;
+    const bob = Math.abs(Math.sin(phase))*1.2;
+    g.save();
+    g.translate(0,-bob);
+    limb(g,-6,-20,18,5.5, legSwing, dark);
+    limb(g,6,-20,18,5.5, -legSwing, dark);
+    const grad = g.createLinearGradient(-11,-42,11,-20);
+    grad.addColorStop(0, lighten(color,22)); grad.addColorStop(1, dark);
+    g.fillStyle = grad;
+    g.beginPath(); g.moveTo(-11,-20); g.lineTo(-11,-42); g.lineTo(11,-42); g.lineTo(11,-20); g.closePath(); g.fill();
+    g.save();
+    g.translate(-11,-38); g.rotate(armSwing*0.3);
+    g.fillStyle = "#5f5847"; g.fillRect(-3,0,6,16);
+    g.strokeStyle = "#847c62"; g.lineWidth = 1; g.strokeRect(-3,0,6,16);
+    g.restore();
+    limb(g,11,-38,12,5, -armSwing-0.1, color, (g2)=>{
+      g2.fillStyle = "#c6ccd6"; g2.fillRect(-1,-10,2,10);
+      g2.fillStyle = "#5f5847"; g2.fillRect(-3,0,6,2);
+    });
+    g.fillStyle = color;
+    g.beginPath(); g.arc(0,-47,8,0,Math.PI*2); g.fill();
+    g.fillStyle = "#a6342f"; g.fillRect(-2,-58,4,9);
+    g.restore();
+  }
+
+  function paintWarlordFrame(g, phase, color, dark){
+    const legSwing = Math.sin(phase)*0.3, armSwing = -Math.sin(phase)*0.3;
+    const bob = Math.abs(Math.sin(phase))*1.4;
+    g.save();
+    g.translate(0,-bob);
+    g.fillStyle = "#3a1414";
+    g.beginPath();
+    g.moveTo(-10,-46); g.lineTo(-17+legSwing*4,-6); g.lineTo(17+legSwing*4,-6); g.lineTo(10,-46); g.closePath();
+    g.fill();
+    limb(g,-7,-22,20,7, legSwing, dark);
+    limb(g,7,-22,20,7, -legSwing, dark);
+    const grad = g.createLinearGradient(-13,-46,13,-22);
+    grad.addColorStop(0, lighten(color,20)); grad.addColorStop(1, dark);
+    g.fillStyle = grad;
+    g.beginPath(); g.moveTo(-13,-22); g.lineTo(-14,-46); g.lineTo(14,-46); g.lineTo(13,-22); g.closePath(); g.fill();
+    limb(g,-12,-42,13,6, armSwing+0.15, color);
+    limb(g,12,-42,15,6, -armSwing-0.2, color, (g2)=>{
+      g2.strokeStyle = "#5f5847"; g2.lineWidth = 3;
+      g2.beginPath(); g2.moveTo(0,0); g2.lineTo(0,16); g2.stroke();
+      g2.fillStyle = "#847c62";
+      g2.beginPath(); g2.moveTo(1.5,2); g2.lineTo(13,6); g2.lineTo(12,15); g2.lineTo(1.5,12); g2.closePath(); g2.fill();
+    });
+    g.fillStyle = color;
+    g.beginPath(); g.arc(0,-52,9.5,0,Math.PI*2); g.fill();
+    g.strokeStyle = "#e8e2d0"; g.lineWidth = 2.4; g.lineCap = "round";
+    g.beginPath(); g.moveTo(-6,-58); g.quadraticCurveTo(-14,-64,-11,-71); g.stroke();
+    g.beginPath(); g.moveTo(6,-58); g.quadraticCurveTo(14,-64,11,-71); g.stroke();
+    g.restore();
+  }
+
+  const ENEMY_PAINTERS = {
+    goblin: paintGoblinFrame, orc: paintOrcFrame, knight: paintKnightFrame, warlord: paintWarlordFrame
+  };
+
+  function buildEnemySpriteSheet(type){
+    const painter = ENEMY_PAINTERS[type];
+    const def = ENEMY_TYPES[type];
+    const strip = document.createElement("canvas");
+    strip.width = ENEMY_FRAME_W*ENEMY_FRAMES; strip.height = ENEMY_FRAME_H;
+    const g = strip.getContext("2d");
+    for(let i=0;i<ENEMY_FRAMES;i++){
+      const phase = (i/ENEMY_FRAMES)*Math.PI*2;
+      g.save();
+      g.translate(i*ENEMY_FRAME_W+ENEMY_ANCHOR_X, ENEMY_ANCHOR_Y);
+      painter(g, phase, def.color, def.dark);
+      g.restore();
+    }
+    return strip;
+  }
+
+  // A same-shape white silhouette per sheet, used to tint a hit character
+  // without touching any pixels outside its own silhouette (no shadowBlur,
+  // no full-rect overlay bleeding onto the grass behind it).
+  function buildFlashSheet(sourceStrip){
+    const c = document.createElement("canvas");
+    c.width = sourceStrip.width; c.height = sourceStrip.height;
+    const g = c.getContext("2d");
+    g.drawImage(sourceStrip,0,0);
+    g.globalCompositeOperation = "source-in";
+    g.fillStyle = "#ece3cf";
+    g.fillRect(0,0,c.width,c.height);
+    return c;
+  }
+
+  const enemySprites = {}, enemyFlashSprites = {};
+  for(const type of Object.keys(ENEMY_TYPES)){
+    enemySprites[type] = buildEnemySpriteSheet(type);
+    enemyFlashSprites[type] = buildFlashSheet(enemySprites[type]);
+  }
+
+  // ============================================================
   // Tower drawing (shared between HUD cards and battlefield)
   // ============================================================
   function drawTower(c, x, y, key, level, fireFlash, animPhase){
@@ -871,50 +1050,39 @@
   function drawEnemy(c, e){
     const def = ENEMY_TYPES[e.type];
     const walk = e.animPhase*0.15;
-    const legSwing = Math.sin(walk)*3;
-    const bob = Math.abs(Math.sin(walk))*1.6;
+    const frameIdx = Math.round((walk % (Math.PI*2))/(Math.PI*2)*ENEMY_FRAMES) % ENEMY_FRAMES;
+    const sx = frameIdx*ENEMY_FRAME_W;
+    const scale = ENEMY_DRAW_SCALE;
+    const dx = -ENEMY_ANCHOR_X*scale, dy = -ENEMY_ANCHOR_Y*scale;
+    const dw = ENEMY_FRAME_W*scale, dh = ENEMY_FRAME_H*scale;
+
     c.save();
     c.translate(e.x, e.y);
 
     if(e.slowUntil > now){
+      const ringY = -def.topOffset*scale*0.55;
       c.globalAlpha = 0.5 + 0.5*Math.sin(now*10);
       c.strokeStyle = "#6fa88d"; c.lineWidth = 2;
-      c.beginPath(); c.arc(0,0, def.radius+4, 0, Math.PI*2); c.stroke();
+      c.beginPath(); c.arc(0, ringY, def.radius+6, 0, Math.PI*2); c.stroke();
       c.globalAlpha = 1;
     }
 
-    // legs (fixed baseline, swing side to side with the walk cycle)
-    c.fillStyle = def.dark;
-    c.beginPath(); c.ellipse(-4+legSwing, def.radius*0.65, 3.2, 5, 0, 0, Math.PI*2); c.fill();
-    c.beginPath(); c.ellipse(4-legSwing, def.radius*0.65, 3.2, 5, 0, 0, Math.PI*2); c.fill();
-
-    // body (bobs up slightly on each step)
-    c.save();
-    c.translate(0, -bob);
-    c.fillStyle = def.dark;
-    c.beginPath(); c.arc(1,2, def.radius, 0, Math.PI*2); c.fill();
-    c.fillStyle = def.color;
-    c.beginPath(); c.arc(0,0, def.radius, 0, Math.PI*2); c.fill();
+    c.drawImage(enemySprites[e.type], sx, 0, ENEMY_FRAME_W, ENEMY_FRAME_H, dx, dy, dw, dh);
     if(e.hitFlash>0){
-      c.globalAlpha = e.hitFlash*0.65;
-      c.fillStyle = "#ece3cf";
-      c.beginPath(); c.arc(0,0, def.radius, 0, Math.PI*2); c.fill();
+      c.globalAlpha = e.hitFlash*0.7;
+      c.drawImage(enemyFlashSprites[e.type], sx, 0, ENEMY_FRAME_W, ENEMY_FRAME_H, dx, dy, dw, dh);
       c.globalAlpha = 1;
     }
-    if(e.type==="knight" || e.type==="warlord"){
-      c.fillStyle = "#a6342f";
-      c.fillRect(-2,-def.radius-6,4,8);
-    }
-    c.restore();
     c.restore();
 
-    // hp bar
+    // hp bar, anchored above this type's actual sprite height
     const w = def.radius*2.1;
+    const barY = e.y - def.topOffset*scale - 6;
     const ratio = Math.max(0, e.hp/e.maxHp);
     c.fillStyle = "rgba(0,0,0,.55)";
-    c.fillRect(e.x-w/2, e.y-def.radius-10, w, 4);
+    c.fillRect(e.x-w/2, barY, w, 4);
     c.fillStyle = ratio>0.5 ? "#6fa88d" : ratio>0.25 ? "#e0ac57" : "#c94842";
-    c.fillRect(e.x-w/2, e.y-def.radius-10, w*ratio, 4);
+    c.fillRect(e.x-w/2, barY, w*ratio, 4);
   }
 
   // ============================================================
