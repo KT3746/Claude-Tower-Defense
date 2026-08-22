@@ -540,17 +540,20 @@
   // State
   // ============================================================
   let gold, lives, wave, waveInProgress, spawnQueue, spawnTimer, spawnInterval;
-  let towers, enemies, projectiles, pops;
+  let towers, enemies, projectiles;
   let armedType = null;
   let selectedTower = null;
   let paused = false, ended = false, speedMul = 1, muted = false;
   let hoverCell = null;
   let enemyIdSeq = 1;
+  let emberTimer = 0, fogTimer = 0, cloudOffset = 0;
 
   function resetState(){
     gold = START_GOLD; lives = START_LIVES; wave = 0; waveInProgress = false;
     spawnQueue = []; spawnTimer = 0; spawnInterval = 0.65;
-    towers = []; enemies = []; projectiles = []; pops = [];
+    towers = []; enemies = []; projectiles = [];
+    for(const p of particles) p.active = false;
+    emberTimer = 0; fogTimer = 0;
     armedType = null; selectedTower = null; paused = false; ended = false; speedMul = 1;
     hoverCell = null;
     updateHUD();
@@ -635,15 +638,196 @@
     c.beginPath(); c.moveTo(x+14, y-46); c.lineTo(x+14, y-70); c.stroke();
     c.fillStyle = "#a6342f";
     c.beginPath(); c.moveTo(x+14,y-70); c.lineTo(x+34,y-64); c.lineTo(x+14,y-58); c.closePath(); c.fill();
+    // torch mounts flanking the gate (flame + glow drawn per-frame, see drawTorches)
+    c.fillStyle = "#2a251d";
+    c.fillRect(x-14, y-30, 4, 24);
+    c.fillRect(x+40, y-30, 4, 24);
+  }
+
+  // ============================================================
+  // Visual effects: glow sprites, torches, cloud shadows, particle pool
+  // ============================================================
+  const castleAnchor = {x: WAYPOINTS[WAYPOINTS.length-1].x-24, y: WAYPOINTS[WAYPOINTS.length-1].y};
+  const TORCH_POINTS = [
+    {x: castleAnchor.x-12, y: castleAnchor.y-30, seed:0},
+    {x: castleAnchor.x+42, y: castleAnchor.y-30, seed:2.3}
+  ];
+
+  // Pre-rendered radial glow sprites: draw once, `drawImage` many times per
+  // frame instead of using ctx.shadowBlur (expensive, especially on mobile).
+  function makeGlow(r,g,b,size){
+    const c = document.createElement("canvas");
+    c.width = c.height = size;
+    const gctx = c.getContext("2d");
+    const grad = gctx.createRadialGradient(size/2,size/2,0, size/2,size/2,size/2);
+    grad.addColorStop(0, "rgba("+r+","+g+","+b+",0.9)");
+    grad.addColorStop(0.4, "rgba("+r+","+g+","+b+",0.35)");
+    grad.addColorStop(1, "rgba("+r+","+g+","+b+",0)");
+    gctx.fillStyle = grad;
+    gctx.fillRect(0,0,size,size);
+    return c;
+  }
+  const GLOW_AMBER = makeGlow(224,172,87,64);
+  const GLOW_GREEN = makeGlow(111,168,141,64);
+  const GLOW_FOG = makeGlow(178,171,150,160);
+
+  function drawGlow(sprite, x, y, radius, alpha){
+    if(alpha<=0 || radius<=0) return;
+    const s = radius*2;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.globalCompositeOperation = "lighter";
+    ctx.drawImage(sprite, x-radius, y-radius, s, s);
+    ctx.restore();
+  }
+
+  function drawTorches(){
+    for(const tp of TORCH_POINTS){
+      const flicker = 0.75 + 0.2*Math.sin(now*9+tp.seed) + 0.12*Math.sin(now*23+tp.seed*3);
+      drawGlow(GLOW_AMBER, tp.x, tp.y-4, 20*flicker, 0.5*flicker);
+      ctx.save();
+      ctx.translate(tp.x, tp.y);
+      ctx.fillStyle = "#e0ac57";
+      ctx.beginPath();
+      ctx.moveTo(0,6);
+      ctx.quadraticCurveTo(4*flicker,-2, 0,-9*flicker);
+      ctx.quadraticCurveTo(-4*flicker,-2, 0,6);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  // Cloud-shadow layer: a handful of soft dark blobs baked once, drifted
+  // horizontally with wraparound each frame via a cheap "multiply" composite
+  // over the (already-baked) terrain — no per-frame terrain redraw.
+  const cloudLayer = document.createElement("canvas");
+  cloudLayer.width = CANVAS_W; cloudLayer.height = CANVAS_H;
+  (function paintClouds(){
+    const cc = cloudLayer.getContext("2d");
+    function blob(x,y,r){
+      const grad = cc.createRadialGradient(x,y,0,x,y,r);
+      grad.addColorStop(0,"rgba(20,17,13,0.5)");
+      grad.addColorStop(1,"rgba(20,17,13,0)");
+      cc.fillStyle = grad;
+      cc.beginPath(); cc.arc(x,y,r,0,Math.PI*2); cc.fill();
+    }
+    const spots = [
+      {x:120,y:90,r:170},{x:520,y:60,r:140},{x:760,y:220,r:190},
+      {x:300,y:340,r:150},{x:60,y:400,r:130}
+    ];
+    for(const s of spots){
+      blob(s.x, s.y, s.r);
+      if(s.x < 200) blob(s.x+CANVAS_W, s.y, s.r);
+      if(s.x > CANVAS_W-200) blob(s.x-CANVAS_W, s.y, s.r);
+    }
+  })();
+
+  // Fixed-capacity particle pool (hit sparks, death bursts, muzzle flashes,
+  // floating damage numbers, ambient embers/fog). Never grows past
+  // MAX_PARTICLES; a spawn request is silently dropped once it's full, which
+  // guarantees a hard per-frame cost ceiling no matter how chaotic a wave gets.
+  const MAX_PARTICLES = 200;
+  const particles = [];
+  for(let i=0;i<MAX_PARTICLES;i++) particles.push({active:false});
+
+  function spawnParticle(type, x, y, opts){
+    let slot = null;
+    for(let i=0;i<particles.length;i++){ if(!particles[i].active){ slot = particles[i]; break; } }
+    if(!slot) return;
+    slot.active = true; slot.type = type; slot.x = x; slot.y = y; slot.t = 0;
+    slot.vx = 0; slot.vy = 0; slot.size = 4; slot.life = 0.4;
+    slot.color = "#ece3cf"; slot.layer = "front"; slot.growTo = slot.size;
+    slot.alpha = 1; slot.text = ""; slot.glow = GLOW_AMBER;
+    Object.assign(slot, opts);
+  }
+
+  function updateParticles(dt){
+    for(const p of particles){
+      if(!p.active) continue;
+      p.t += dt;
+      if(p.t >= p.life){ p.active = false; continue; }
+      if(p.type==="spark"){
+        p.x += p.vx*dt; p.y += p.vy*dt; p.vy += 260*dt;
+      } else if(p.type==="ember"){
+        p.x += p.vx*dt; p.y += p.vy*dt;
+      } else if(p.type==="fog"){
+        p.x += p.vx*dt;
+      } else if(p.type==="dmgtext"){
+        p.y += p.vy*dt; p.vy *= 0.9;
+      }
+    }
+  }
+
+  function drawParticles(layer){
+    for(const p of particles){
+      if(!p.active || p.layer!==layer) continue;
+      const lr = p.t/p.life;
+      if(p.type==="ring"){
+        const r = p.size + (p.growTo-p.size)*lr;
+        ctx.globalAlpha = 1-lr;
+        ctx.strokeStyle = p.color; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(p.x,p.y,r,0,Math.PI*2); ctx.stroke();
+        ctx.globalAlpha = 1;
+      } else if(p.type==="spark"){
+        ctx.globalAlpha = Math.max(0,1-lr);
+        ctx.fillStyle = p.color;
+        ctx.beginPath(); ctx.arc(p.x,p.y,p.size,0,Math.PI*2); ctx.fill();
+        ctx.globalAlpha = 1;
+      } else if(p.type==="muzzle"){
+        drawGlow(p.glow, p.x, p.y, p.size*(1-lr*0.3), 0.8*(1-lr));
+      } else if(p.type==="dmgtext"){
+        ctx.globalAlpha = Math.max(0,1-lr);
+        ctx.fillStyle = p.color;
+        ctx.font = "700 12px Archivo, sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(p.text, p.x, p.y);
+        ctx.globalAlpha = 1;
+      } else if(p.type==="ember"){
+        const env = Math.min(1,lr*3) * Math.max(0,1-lr);
+        drawGlow(GLOW_AMBER, p.x, p.y, p.size*3, 0.5*env);
+        ctx.globalAlpha = env;
+        ctx.fillStyle = "#e0ac57";
+        ctx.beginPath(); ctx.arc(p.x,p.y,p.size,0,Math.PI*2); ctx.fill();
+        ctx.globalAlpha = 1;
+      } else if(p.type==="fog"){
+        const env = Math.min(1,lr*3) * Math.min(1,(1-lr)*3);
+        ctx.save();
+        ctx.globalAlpha = p.alpha*env;
+        ctx.drawImage(GLOW_FOG, p.x-p.size, p.y-p.size, p.size*2, p.size*2);
+        ctx.restore();
+      }
+    }
+  }
+
+  function spawnAmbient(dt){
+    emberTimer -= dt;
+    if(emberTimer<=0){
+      emberTimer = 0.6 + Math.random()*0.5;
+      spawnParticle("ember", Math.random()*CANVAS_W, CANVAS_H+6, {
+        vx:(Math.random()-0.5)*6, vy:-(14+Math.random()*10),
+        life:5+Math.random()*2.5, size:1.4+Math.random()*1.3, layer:"back"
+      });
+    }
+    fogTimer -= dt;
+    if(fogTimer<=0){
+      fogTimer = 5 + Math.random()*3;
+      spawnParticle("fog", -60, 60+Math.random()*300, {
+        vx:7+Math.random()*5, life:12+Math.random()*6,
+        size:90+Math.random()*40, alpha:0.06+Math.random()*0.04, layer:"back"
+      });
+    }
   }
 
   // ============================================================
   // Tower drawing (shared between HUD cards and battlefield)
   // ============================================================
-  function drawTower(c, x, y, key, level){
+  function drawTower(c, x, y, key, level, fireFlash, animPhase){
+    fireFlash = fireFlash||0;
+    animPhase = animPhase||0;
     const t = TOWER_TYPES[key];
+    const idle = Math.sin(animPhase*1.6);
     c.save();
-    c.translate(x,y);
+    c.translate(x, y+idle*0.3);
     // base
     c.fillStyle = "#2a251d";
     c.beginPath(); c.ellipse(0, 16, 17, 7, 0, 0, Math.PI*2); c.fill();
@@ -653,25 +837,32 @@
       c.fillRect(-11,-14,22,30);
       c.fillStyle = "#847c62";
       c.beginPath(); c.moveTo(-14,-14); c.lineTo(0,-30); c.lineTo(14,-14); c.closePath(); c.fill();
+      const recoil = fireFlash*6;
+      c.save();
+      c.translate(6+recoil*0.4, -24+recoil*0.3);
+      c.rotate(-0.15*fireFlash);
       c.fillStyle = t.color;
-      c.beginPath(); c.moveTo(6,-28); c.lineTo(20,-24); c.lineTo(6,-20); c.closePath(); c.fill();
+      c.beginPath(); c.moveTo(0,-4); c.lineTo(14,0); c.lineTo(0,4); c.closePath(); c.fill();
+      c.restore();
       if(level>=2){ c.fillStyle="#e0ac57"; c.fillRect(-3,-8,6,6); }
     } else if(key==="cannon"){
       c.fillStyle = "#4a453c";
       c.fillRect(-14,-6,28,22);
       c.fillStyle = "#847c62";
       c.fillRect(-16,-10,32,8);
+      const kick = -6*fireFlash;
       c.fillStyle = "#2a251d";
-      c.fillRect(-6,-22,26,10);
-      c.beginPath(); c.arc(20,-17,5,0,Math.PI*2); c.fill();
+      c.fillRect(-6+kick,-22,26,10);
+      c.beginPath(); c.arc(20+kick,-17,5,0,Math.PI*2); c.fill();
       if(level>=2){ c.strokeStyle="#4f7a66"; c.lineWidth=2; c.strokeRect(-14,-6,28,22); }
     } else if(key==="mage"){
       c.fillStyle = "#6b6552";
       c.beginPath(); c.moveTo(-10,16); c.lineTo(-8,-18); c.lineTo(8,-18); c.lineTo(10,16); c.closePath(); c.fill();
+      const pulse = Math.sin(animPhase*2.4)*1.5 + fireFlash*5;
       c.fillStyle = t.color;
       c.beginPath(); c.arc(0,-24,8,0,Math.PI*2); c.fill();
-      c.globalAlpha = 0.55;
-      c.beginPath(); c.arc(0,-24, level>=2?13:10, 0, Math.PI*2); c.fill();
+      c.globalAlpha = 0.5 + fireFlash*0.3;
+      c.beginPath(); c.arc(0,-24, (level>=2?13:10)+pulse, 0, Math.PI*2); c.fill();
       c.globalAlpha = 1;
     }
     c.restore();
@@ -679,22 +870,42 @@
 
   function drawEnemy(c, e){
     const def = ENEMY_TYPES[e.type];
+    const walk = e.animPhase*0.15;
+    const legSwing = Math.sin(walk)*3;
+    const bob = Math.abs(Math.sin(walk))*1.6;
     c.save();
     c.translate(e.x, e.y);
+
     if(e.slowUntil > now){
       c.globalAlpha = 0.5 + 0.5*Math.sin(now*10);
       c.strokeStyle = "#6fa88d"; c.lineWidth = 2;
       c.beginPath(); c.arc(0,0, def.radius+4, 0, Math.PI*2); c.stroke();
       c.globalAlpha = 1;
     }
+
+    // legs (fixed baseline, swing side to side with the walk cycle)
+    c.fillStyle = def.dark;
+    c.beginPath(); c.ellipse(-4+legSwing, def.radius*0.65, 3.2, 5, 0, 0, Math.PI*2); c.fill();
+    c.beginPath(); c.ellipse(4-legSwing, def.radius*0.65, 3.2, 5, 0, 0, Math.PI*2); c.fill();
+
+    // body (bobs up slightly on each step)
+    c.save();
+    c.translate(0, -bob);
     c.fillStyle = def.dark;
     c.beginPath(); c.arc(1,2, def.radius, 0, Math.PI*2); c.fill();
     c.fillStyle = def.color;
     c.beginPath(); c.arc(0,0, def.radius, 0, Math.PI*2); c.fill();
+    if(e.hitFlash>0){
+      c.globalAlpha = e.hitFlash*0.65;
+      c.fillStyle = "#ece3cf";
+      c.beginPath(); c.arc(0,0, def.radius, 0, Math.PI*2); c.fill();
+      c.globalAlpha = 1;
+    }
     if(e.type==="knight" || e.type==="warlord"){
       c.fillStyle = "#a6342f";
       c.fillRect(-2,-def.radius-6,4,8);
     }
+    c.restore();
     c.restore();
 
     // hp bar
@@ -824,7 +1035,10 @@
       if(isPathCell(g.c,g.r) || occupied){ showToast("Não é possível construir aqui"); return; }
       if(gold < t.cost){ showToast("Ouro insuficiente"); return; }
       gold -= t.cost;
-      towers.push({type:armedType, c:g.c, r:g.r, x:g.c*TILE+TILE/2, y:g.r*TILE+TILE/2, level:1, cooldown:0});
+      towers.push({
+        type:armedType, c:g.c, r:g.r, x:g.c*TILE+TILE/2, y:g.r*TILE+TILE/2, level:1,
+        cooldown:0, fireFlash:0, animPhase:Math.random()*6
+      });
       armedType = null;
       refreshCardStates();
       updateHUD();
@@ -901,7 +1115,7 @@
         id: enemyIdSeq++, type:item.type, dist:0,
         hp: Math.round(def.hp*item.hpMul), maxHp: Math.round(def.hp*item.hpMul),
         speed: def.speed, x:WAYPOINTS[0].x, y:WAYPOINTS[0].y,
-        slowUntil:0, slowFactor:1
+        slowUntil:0, slowFactor:1, animPhase:0, hitFlash:0
       });
       spawnTimer = spawnInterval;
     }
@@ -944,17 +1158,24 @@
 
   function updateTowers(dt){
     for(const tw of towers){
+      tw.animPhase += dt;
       tw.cooldown -= dt;
+      tw.fireFlash = Math.max(0, tw.fireFlash - dt*5);
       const def = towerDef(tw);
       if(tw.cooldown>0) continue;
       const target = findTarget(tw, def);
       if(!target) continue;
       tw.cooldown = def.rate;
+      tw.fireFlash = 1;
       projectiles.push({
         x:tw.x, y:tw.y-20, tx:target.x, ty:target.y,
         speed:def.projSpeed, dmg:def.dmg, color:TOWER_TYPES[tw.type].color,
         splash:def.splash||0, slow: def.slow||null,
         targetId: target.id
+      });
+      spawnParticle("muzzle", tw.x, tw.y-20, {
+        life:0.12, size:16, layer:"front",
+        glow: tw.type==="mage" ? GLOW_GREEN : GLOW_AMBER
       });
       playSfx(tw.type==="cannon"?"cannon":"shoot");
     }
@@ -986,24 +1207,46 @@
         const def = ENEMY_TYPES[e.type];
         const dealt = Math.max(1, p.dmg-def.armor);
         e.hp -= dealt;
+        e.hitFlash = 1;
         if(p.slow){ e.slowUntil = now+p.slow.duration; e.slowFactor = p.slow.factor; }
+        spawnParticle("dmgtext", e.x, e.y-def.radius-14, {
+          vy:-26, life:0.7, color:"#ece3cf", text:String(dealt), layer:"front"
+        });
+        for(let k=0;k<3;k++){
+          const ang = Math.random()*Math.PI*2, spd = 30+Math.random()*50;
+          spawnParticle("spark", p.tx, p.ty, {
+            vx:Math.cos(ang)*spd, vy:Math.sin(ang)*spd, size:1.8,
+            life:0.25+Math.random()*0.15, color:p.color, layer:"front"
+          });
+        }
       }
     }
-    pops.push({x:p.tx, y:p.ty, r:4, max: p.splash>0?p.splash:14, t:0});
+    spawnParticle("ring", p.tx, p.ty, {
+      size:4, growTo: p.splash>0?p.splash:14, life:0.33, color:"#ece3cf", layer:"front"
+    });
     if(anyHit) playSfx("hit");
   }
 
   function updateEnemies(dt){
     for(let i=enemies.length-1;i>=0;i--){
       const e = enemies[i];
+      e.hitFlash = Math.max(0, e.hitFlash - dt*4);
       if(e.hp<=0){
         gold += ENEMY_TYPES[e.type].reward;
-        pops.push({x:e.x,y:e.y,r:2,max:22,t:0,gold:true});
+        spawnParticle("ring", e.x, e.y, {size:2, growTo:22, life:0.33, color:"#e0ac57", layer:"front"});
+        for(let k=0;k<5;k++){
+          const ang = Math.random()*Math.PI*2, spd = 40+Math.random()*60;
+          spawnParticle("spark", e.x, e.y, {
+            vx:Math.cos(ang)*spd, vy:Math.sin(ang)*spd-20, size:2,
+            life:0.4+Math.random()*0.2, color:"#e0ac57", layer:"front"
+          });
+        }
         enemies.splice(i,1);
         updateHUD();
         continue;
       }
       const spd = e.speed * (now<e.slowUntil ? e.slowFactor : 1);
+      e.animPhase += spd*dt;
       e.dist += spd*dt;
       if(e.dist>=TOTAL_LEN){
         lives -= ENEMY_TYPES[e.type].dmg;
@@ -1015,14 +1258,6 @@
       }
       const p = pointAtDistance(e.dist);
       e.x=p.x; e.y=p.y;
-    }
-  }
-
-  function updatePops(dt){
-    for(let i=pops.length-1;i>=0;i--){
-      const pop = pops[i];
-      pop.t += dt*3;
-      if(pop.t>=1) pops.splice(i,1);
     }
   }
 
@@ -1064,6 +1299,17 @@
     ctx.clearRect(0,0,CANVAS_W,CANVAS_H);
     ctx.drawImage(bg,0,0);
 
+    // drifting cloud-shadow layer over the baked terrain (cheap: 2 drawImage calls)
+    ctx.save();
+    ctx.globalCompositeOperation = "multiply";
+    ctx.globalAlpha = 0.6;
+    ctx.drawImage(cloudLayer, cloudOffset, 0);
+    ctx.drawImage(cloudLayer, cloudOffset+CANVAS_W, 0);
+    ctx.restore();
+
+    drawTorches();
+    drawParticles("back");
+
     // build preview
     if(armedType && hoverCell && !ended){
       const t = TOWER_TYPES[armedType];
@@ -1084,7 +1330,7 @@
       ctx.setLineDash([]);
     }
 
-    for(const tw of towers) drawTower(ctx, tw.x, tw.y, tw.type, tw.level);
+    for(const tw of towers) drawTower(ctx, tw.x, tw.y, tw.type, tw.level, tw.fireFlash, tw.animPhase);
     for(const e of enemies) drawEnemy(ctx, e);
 
     for(const p of projectiles){
@@ -1092,14 +1338,7 @@
       ctx.beginPath(); ctx.arc(p.x,p.y, p.splash>0?5:3, 0, Math.PI*2); ctx.fill();
     }
 
-    for(const pop of pops){
-      const r = pop.r + (pop.max-pop.r)*pop.t;
-      ctx.globalAlpha = 1-pop.t;
-      ctx.strokeStyle = pop.gold ? "#e0ac57" : "#ece3cf";
-      ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(pop.x,pop.y,r,0,Math.PI*2); ctx.stroke();
-      ctx.globalAlpha = 1;
-    }
+    drawParticles("front");
   }
 
   // ============================================================
@@ -1148,7 +1387,10 @@
     updateTowers(dt);
     updateProjectiles(dt);
     updateEnemies(dt);
-    updatePops(dt);
+    updateParticles(dt);
+    spawnAmbient(dt);
+    cloudOffset -= dt*8;
+    if(cloudOffset<=-CANVAS_W) cloudOffset += CANVAS_W;
     waveClearCheck();
     render();
   }
