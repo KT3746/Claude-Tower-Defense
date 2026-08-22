@@ -579,15 +579,10 @@
   bg.width = CANVAS_W; bg.height = CANVAS_H;
   (function paintBackground(){
     const bctx = bg.getContext("2d");
-    // grass base with deterministic mottling
-    for(let r=0;r<ROWS;r++){
-      for(let c=0;c<COLS;c++){
-        const seed = (c*31 + r*17) % 7;
-        bctx.fillStyle = seed<2 ? PALETTE.grassDark : PALETTE.grass;
-        bctx.fillRect(c*TILE, r*TILE, TILE, TILE);
-      }
-    }
-    // road
+    paintGrassBase(bctx);
+    paintScenery(bctx);
+
+    // road (drawn on top of scenery so it always reads crisp and clean)
     bctx.lineCap = "round"; bctx.lineJoin = "round";
     bctx.strokeStyle = PALETTE.pathEdge;
     bctx.lineWidth = TILE*0.92;
@@ -598,17 +593,9 @@
     bctx.strokeStyle = PALETTE.path;
     bctx.lineWidth = TILE*0.78;
     bctx.stroke();
-    // road mottling
-    bctx.strokeStyle = PALETTE.pathDark;
-    bctx.lineWidth = 2;
-    for(let i=0;i<220;i++){
-      const d = Math.random()*TOTAL_LEN;
-      const p = pointAtDistance(d);
-      bctx.beginPath();
-      bctx.arc(p.x+(Math.random()-0.5)*TILE*0.5, p.y+(Math.random()-0.5)*TILE*0.5, 1.4, 0, Math.PI*2);
-      bctx.fillStyle = PALETTE.pathDark;
-      bctx.fill();
-    }
+
+    paintRoadDetail(bctx);
+
     // spawn cave marker (left)
     drawGate(bctx, WAYPOINTS[0].x+6, WAYPOINTS[0].y, "#2a251d", "#847c62");
     // castle gate marker (right)
@@ -642,6 +629,212 @@
     c.fillStyle = "#2a251d";
     c.fillRect(x-14, y-30, 4, 24);
     c.fillRect(x+40, y-30, 4, 24);
+  }
+
+  // ============================================================
+  // Landscape detail (all baked once into `bg` -- no per-frame cost):
+  // organic grass, road wear, and scenery (trees/rocks/tufts/pond)
+  // scattered off the path.
+  // ============================================================
+  function paintGrassBase(bctx){
+    const lg = bctx.createLinearGradient(0,0,CANVAS_W,CANVAS_H);
+    lg.addColorStop(0, "#44562f");
+    lg.addColorStop(1, "#28351a");
+    bctx.fillStyle = lg;
+    bctx.fillRect(0,0,CANVAS_W,CANVAS_H);
+
+    // organic color blotches replace the old uniform checker tiling
+    const blotches = ["#3a4a2c","#465a34","#31401f","#4f6339"];
+    for(let i=0;i<150;i++){
+      const x = Math.random()*CANVAS_W, y = Math.random()*CANVAS_H;
+      const r = 26+Math.random()*64;
+      const col = blotches[(Math.random()*blotches.length)|0];
+      const grad = bctx.createRadialGradient(x,y,0,x,y,r);
+      grad.addColorStop(0, col+"33");
+      grad.addColorStop(1, col+"00");
+      bctx.fillStyle = grad;
+      bctx.beginPath(); bctx.arc(x,y,r,0,Math.PI*2); bctx.fill();
+    }
+
+    // fine grass-blade speckle for close-up texture
+    bctx.globalAlpha = 0.35;
+    bctx.lineWidth = 1;
+    for(let i=0;i<900;i++){
+      const x = Math.random()*CANVAS_W, y = Math.random()*CANVAS_H;
+      bctx.strokeStyle = Math.random()<0.5 ? "#586f3c" : "#223014";
+      bctx.beginPath();
+      bctx.moveTo(x,y);
+      bctx.lineTo(x+(Math.random()-0.5)*4, y-3-Math.random()*3);
+      bctx.stroke();
+    }
+    bctx.globalAlpha = 1;
+
+    // soft vignette for depth
+    const vg = bctx.createRadialGradient(CANVAS_W/2,CANVAS_H/2,CANVAS_H*0.35, CANVAS_W/2,CANVAS_H/2,CANVAS_H*0.92);
+    vg.addColorStop(0,"rgba(0,0,0,0)");
+    vg.addColorStop(1,"rgba(0,0,0,0.35)");
+    bctx.fillStyle = vg;
+    bctx.fillRect(0,0,CANVAS_W,CANVAS_H);
+  }
+
+  function paintRoadDetail(bctx){
+    // subtle worn center streak
+    bctx.save();
+    bctx.strokeStyle = "rgba(122,104,74,0.35)";
+    bctx.lineWidth = TILE*0.22;
+    bctx.lineCap = "round"; bctx.lineJoin = "round";
+    bctx.beginPath();
+    bctx.moveTo(WAYPOINTS[0].x, WAYPOINTS[0].y);
+    for(let i=1;i<WAYPOINTS.length;i++) bctx.lineTo(WAYPOINTS[i].x, WAYPOINTS[i].y);
+    bctx.stroke();
+    bctx.restore();
+
+    // scattered pebbles
+    for(let i=0;i<90;i++){
+      const d = Math.random()*TOTAL_LEN;
+      const p = pointAtDistance(d);
+      const ox=(Math.random()-0.5)*TILE*0.6, oy=(Math.random()-0.5)*TILE*0.6;
+      const r = 1+Math.random()*2.2;
+      bctx.fillStyle = Math.random()<0.5 ? PALETTE.stone : PALETTE.stoneDark;
+      bctx.beginPath(); bctx.arc(p.x+ox,p.y+oy,r,0,Math.PI*2); bctx.fill();
+    }
+
+    // hairline cracks
+    bctx.strokeStyle = "rgba(42,37,29,0.5)";
+    bctx.lineWidth = 1;
+    for(let i=0;i<18;i++){
+      const d = Math.random()*TOTAL_LEN;
+      const p = pointAtDistance(d);
+      let cx=p.x+(Math.random()-0.5)*TILE*0.5, cy=p.y+(Math.random()-0.5)*TILE*0.5;
+      bctx.beginPath();
+      bctx.moveTo(cx,cy);
+      for(let k=0;k<3;k++){
+        cx += (Math.random()-0.5)*8; cy += (Math.random()-0.5)*8;
+        bctx.lineTo(cx,cy);
+      }
+      bctx.stroke();
+    }
+
+    // overgrown edge tufts nibbling into the dirt
+    for(let i=0;i<70;i++){
+      const d = Math.random()*TOTAL_LEN;
+      const p = pointAtDistance(d);
+      const ang = Math.random()*Math.PI*2;
+      const edge = TILE*0.42;
+      const x = p.x+Math.cos(ang)*edge, y=p.y+Math.sin(ang)*edge;
+      bctx.strokeStyle = "#3e5629";
+      bctx.lineWidth = 1.3;
+      bctx.beginPath();
+      bctx.moveTo(x,y);
+      bctx.lineTo(x+(Math.random()-0.5)*3, y-3-Math.random()*3);
+      bctx.stroke();
+    }
+  }
+
+  // Picks up to `count` distinct non-path grid cells, skipping any within
+  // `radius` tiles of an `avoid` point (used to keep the spawn cave and
+  // castle gate clear of decoration).
+  function pickFreeCells(count, avoid){
+    avoid = avoid||[];
+    const list = [];
+    let guard = 0;
+    while(list.length<count && guard<count*25){
+      guard++;
+      const c = Math.floor(Math.random()*COLS), r = Math.floor(Math.random()*ROWS);
+      if(isPathCell(c,r)) continue;
+      if(list.some(p=>p.c===c&&p.r===r)) continue;
+      if(avoid.some(a=>Math.hypot(a.c-c,a.r-r)<a.radius)) continue;
+      list.push({c,r});
+    }
+    return list;
+  }
+
+  function paintTree(bctx,x,y,scale){
+    bctx.save();
+    bctx.translate(x,y);
+    bctx.scale(scale,scale);
+    bctx.fillStyle = "rgba(10,10,6,0.3)";
+    bctx.beginPath(); bctx.ellipse(2,4,15,6,0,0,Math.PI*2); bctx.fill();
+    bctx.fillStyle = "#4a3928";
+    bctx.fillRect(-3,-6,6,14);
+    const canopy = ["#31401f","#3a4a2c","#465a34"];
+    [[0,-18,15],[-9,-12,11],[9,-14,12]].forEach((b,i)=>{
+      bctx.fillStyle = canopy[i%canopy.length];
+      bctx.beginPath(); bctx.arc(b[0],b[1],b[2],0,Math.PI*2); bctx.fill();
+    });
+    bctx.restore();
+  }
+
+  function paintRock(bctx,x,y,scale){
+    bctx.save();
+    bctx.translate(x,y); bctx.scale(scale,scale);
+    bctx.fillStyle = "rgba(10,10,6,0.25)";
+    bctx.beginPath(); bctx.ellipse(2,5,12,5,0,0,Math.PI*2); bctx.fill();
+    const grad = bctx.createLinearGradient(-10,-10,10,8);
+    grad.addColorStop(0, lighten(PALETTE.stone,20));
+    grad.addColorStop(1, PALETTE.stoneDark);
+    bctx.fillStyle = grad;
+    bctx.beginPath();
+    bctx.moveTo(-11,4); bctx.lineTo(-8,-8); bctx.lineTo(3,-11); bctx.lineTo(11,-2); bctx.lineTo(9,6); bctx.lineTo(-4,8); bctx.closePath();
+    bctx.fill();
+    bctx.restore();
+  }
+
+  function paintTuft(bctx,x,y,scale){
+    bctx.save();
+    bctx.translate(x,y); bctx.scale(scale,scale);
+    bctx.strokeStyle = "#546b38"; bctx.lineWidth = 1.4; bctx.lineCap = "round";
+    for(let i=0;i<5;i++){
+      const a = (i-2)*0.35;
+      bctx.beginPath();
+      bctx.moveTo(0,4);
+      bctx.quadraticCurveTo(Math.sin(a)*4, -4, Math.sin(a)*7, -10-Math.random()*3);
+      bctx.stroke();
+    }
+    bctx.restore();
+  }
+
+  function paintPond(bctx,x,y,rw,rh){
+    bctx.save();
+    bctx.translate(x,y);
+    bctx.fillStyle = "rgba(10,10,6,0.25)";
+    bctx.beginPath(); bctx.ellipse(3,5,rw+4,rh+3,0,0,Math.PI*2); bctx.fill();
+    const grad = bctx.createLinearGradient(-rw,-rh,rw,rh);
+    grad.addColorStop(0,"#3d5a5c"); grad.addColorStop(1,"#24393b");
+    bctx.fillStyle = grad;
+    bctx.beginPath(); bctx.ellipse(0,0,rw,rh,0,0,Math.PI*2); bctx.fill();
+    bctx.strokeStyle = "#1c2c2d"; bctx.lineWidth = 2; bctx.stroke();
+    bctx.strokeStyle = "rgba(210,225,215,0.35)"; bctx.lineWidth = 2;
+    bctx.beginPath(); bctx.ellipse(-rw*0.2,-rh*0.3,rw*0.4,rh*0.18,0.3,0,Math.PI*1.2); bctx.stroke();
+    for(let i=0;i<5;i++) paintTuft(bctx, -rw*0.7+i*(rw*0.35), rh*0.7, 0.8);
+    bctx.restore();
+  }
+
+  function paintScenery(bctx){
+    const avoid = [
+      {c:0,r:2,radius:2.2}, {c:17,r:8,radius:2.2}
+    ];
+    // small tree clusters, concentrated rather than uniformly scattered,
+    // so they read as forest edges instead of clutter in the play area
+    pickFreeCells(6, avoid).forEach(seed=>{
+      const n = 2+Math.floor(Math.random()*3);
+      for(let i=0;i<n;i++){
+        const x = seed.c*TILE+TILE/2+(Math.random()-0.5)*TILE*1.6;
+        const y = seed.r*TILE+TILE/2+(Math.random()-0.5)*TILE*1.6;
+        paintTree(bctx, x, y, 0.85+Math.random()*0.4);
+      }
+    });
+    // rocks
+    pickFreeCells(8, avoid).forEach(p=>{
+      paintRock(bctx, p.c*TILE+TILE/2+(Math.random()-0.5)*16, p.r*TILE+TILE/2+(Math.random()-0.5)*16, 0.8+Math.random()*0.5);
+    });
+    // tall-grass tufts for close-up variety
+    pickFreeCells(26, avoid).forEach(p=>{
+      paintTuft(bctx, p.c*TILE+TILE/2+(Math.random()-0.5)*24, p.r*TILE+TILE/2+(Math.random()-0.5)*24, 0.8+Math.random()*0.6);
+    });
+    // one small pond tucked in a free corner
+    const pondSpot = pickFreeCells(1, avoid)[0];
+    if(pondSpot) paintPond(bctx, pondSpot.c*TILE+TILE/2, pondSpot.r*TILE+TILE/2, 26, 16);
   }
 
   // ============================================================
