@@ -515,10 +515,10 @@
   };
 
   const ENEMY_TYPES = {
-    goblin:{name:"Trasgo", hp:18, speed:62, armor:0, reward:5, dmg:1, color:"#5c7a3e", dark:"#3e5629", radius:11, topOffset:40},
-    orc:{name:"Orc", hp:48, speed:44, armor:1, reward:9, dmg:2, color:"#7a6a35", dark:"#584c22", radius:15, topOffset:54},
-    knight:{name:"Cavaleiro Renegado", hp:120, speed:34, armor:3, reward:18, dmg:3, color:"#8b8578", dark:"#5f594c", radius:16, topOffset:66},
-    warlord:{name:"Chefe de Guerra", hp:420, speed:28, armor:4, reward:60, dmg:6, color:"#7a2020", dark:"#4d1414", radius:24, topOffset:84}
+    goblin:{name:"Trasgo", hp:18, speed:62, armor:0, reward:5, dmg:1, color:"#5c7a3e", dark:"#3e5629", radius:11, topOffset:47},
+    orc:{name:"Orc", hp:48, speed:44, armor:1, reward:9, dmg:2, color:"#7a6a35", dark:"#584c22", radius:15, topOffset:61},
+    knight:{name:"Cavaleiro Renegado", hp:120, speed:34, armor:3, reward:18, dmg:3, color:"#8b8578", dark:"#5f594c", radius:16, topOffset:75},
+    warlord:{name:"Chefe de Guerra", hp:420, speed:28, armor:4, reward:60, dmg:6, color:"#7a2020", dark:"#4d1414", radius:24, topOffset:89}
   };
 
   function generateWave(n){
@@ -1020,133 +1020,391 @@
   // ============================================================
   const ENEMY_FRAME_W = 64, ENEMY_FRAME_H = 100, ENEMY_FRAMES = 6;
   const ENEMY_ANCHOR_X = ENEMY_FRAME_W/2, ENEMY_ANCHOR_Y = ENEMY_FRAME_H-8;
-  const ENEMY_DRAW_SCALE = 0.8;
+  const ENEMY_DRAW_SCALE = 0.88;
 
-  function lighten(hex, amt){
+  function clampByte(v){ return v<0?0:v>255?255:v; }
+  function shade(hex, amt){
     const n = parseInt(hex.slice(1),16);
-    const r = Math.min(255,(n>>16)+amt), gg = Math.min(255,((n>>8)&255)+amt), b = Math.min(255,(n&255)+amt);
-    return "rgb("+r+","+gg+","+b+")";
+    return "rgb("+clampByte((n>>16)+amt)+","+clampByte(((n>>8)&255)+amt)+","+clampByte((n&255)+amt)+")";
+  }
+  function lighten(hex, amt){ return shade(hex, amt); }
+
+  // Fills the current path with a light-from-upper-left gradient plus a dark
+  // contour. The gradient gives each piece volume and the contour keeps the
+  // figure readable against the busy terrain -- together they're what
+  // separates a drawn character from a flat silhouette.
+  function modeled(g, x0,y0,x1,y1, base, outline){
+    const grad = g.createLinearGradient(x0,y0,x1,y1);
+    grad.addColorStop(0, shade(base, 40));
+    grad.addColorStop(0.5, base);
+    grad.addColorStop(1, shade(base, -32));
+    g.fillStyle = grad;
+    g.fill();
+    if(outline!==false){
+      g.strokeStyle = shade(base, -72);
+      g.lineWidth = 1;
+      g.stroke();
+    }
   }
 
-  // Draws one limb as a rounded stroke pivoting at (hipX,hipY); `atEnd`, if
-  // given, runs with the transform still positioned at the limb's tip (for
-  // attaching a weapon/prop to the hand).
-  function limb(g, hipX, hipY, len, width, angle, color, atEnd){
+  function groundShadow(g, rw, rh){
+    g.save();
+    g.fillStyle = "rgba(8,10,6,0.42)";
+    g.beginPath(); g.ellipse(1.5, 0, rw, rh, 0, 0, Math.PI*2); g.fill();
+    g.restore();
+  }
+
+  // A tapered segment running downward from the current origin: wider at the
+  // top (joint) than the bottom, which is what makes a limb read as a limb
+  // rather than a stick.
+  function segment(g, len, wTop, wBot, color){
+    g.beginPath();
+    g.moveTo(-wTop/2, 0);
+    g.lineTo(wTop/2, 0);
+    g.lineTo(wBot/2, len);
+    g.lineTo(-wBot/2, len);
+    g.closePath();
+    modeled(g, -wTop/2, 0, wTop/2, len, color);
+  }
+
+  // Two-segment leg with a knee. The shin lags behind the thigh, so the
+  // stride bends instead of swinging open like a compass -- the single
+  // biggest difference between a walking figure and a pair of sticks.
+  function leg(g, hipX, hipY, thigh, shin, width, swing, color, bootColor){
+    const knee = Math.max(0, -swing)*1.15 + 0.1;
     g.save();
     g.translate(hipX, hipY);
-    g.rotate(angle);
-    g.strokeStyle = color; g.lineWidth = width; g.lineCap = "round";
-    g.beginPath(); g.moveTo(0,0); g.lineTo(0,len); g.stroke();
-    if(atEnd){ g.translate(0,len); atEnd(g); }
+    g.rotate(swing);
+    segment(g, thigh, width, width*0.84, color);
+    g.translate(0, thigh);
+    g.rotate(knee);
+    segment(g, shin, width*0.84, width*0.6, shade(color,-10));
+    g.translate(0, shin);
+    g.rotate(-swing-knee); // foot stays flat to the ground
+    g.beginPath();
+    g.moveTo(-width*0.4,-0.5);
+    g.lineTo(width*0.4,-0.5);
+    g.lineTo(width*0.75, 3);
+    g.lineTo(-width*0.5, 3);
+    g.closePath();
+    modeled(g, -width*0.5,-0.5, width*0.75,3, bootColor);
+    g.restore();
+  }
+
+  // Two-segment arm with an elbow; `atEnd` runs positioned at the hand.
+  function arm(g, shX, shY, upper, fore, width, swing, color, atEnd){
+    const elbow = Math.max(0, swing)*0.8 + 0.15;
+    g.save();
+    g.translate(shX, shY);
+    g.rotate(swing);
+    segment(g, upper, width, width*0.85, color);
+    g.translate(0, upper);
+    g.rotate(elbow);
+    segment(g, fore, width*0.85, width*0.68, color);
+    g.translate(0, fore);
+    if(atEnd) atEnd(g);
     g.restore();
   }
 
   function paintGoblinFrame(g, phase, color, dark){
-    const legSwing = Math.sin(phase)*0.5, armSwing = -Math.sin(phase)*0.5;
-    const bob = Math.abs(Math.sin(phase))*2;
+    const sw = Math.sin(phase);
+    const legSwing = sw*0.3, armSwing = -sw*0.34;
+    const bob = Math.abs(sw)*1.5;
+    const skin = color, skinBack = shade(color,-20);
+    const cloth = "#6b5535", boot = "#41331e";
+
+    groundShadow(g, 11, 4);
     g.save();
     g.translate(0,-bob);
-    limb(g,-4,-16,14,4, legSwing, dark);
-    limb(g,4,-16,14,4, -legSwing, dark);
-    g.save();
-    g.rotate(0.1);
-    const grad = g.createLinearGradient(-8,-30,8,-16);
-    grad.addColorStop(0, lighten(color,15)); grad.addColorStop(1, dark);
-    g.fillStyle = grad;
-    g.beginPath(); g.moveTo(-7,-16); g.lineTo(-8,-30); g.lineTo(8,-30); g.lineTo(7,-16); g.closePath(); g.fill();
-    g.restore();
-    limb(g,-7,-28,11,3.4, armSwing+0.3, color);
-    limb(g,7,-28,11,3.4, -armSwing-0.1, color, (g2)=>{
-      g2.strokeStyle = "#b3a686"; g2.lineWidth = 2;
-      g2.beginPath(); g2.moveTo(0,0); g2.lineTo(0,9); g2.stroke();
+    g.rotate(0.07); // goblins scurry hunched forward
+
+    // back leg + back arm first, in shadow tones
+    leg(g, -2.6,-18, 9, 9, 5.4, legSwing, skinBack, shade(boot,-14));
+    arm(g, -5,-31, 7, 7, 4.2, armSwing+0.3, skinBack);
+
+    // torso: narrow chest, hunched shoulders
+    g.beginPath();
+    g.moveTo(-6.2,-17);
+    g.quadraticCurveTo(-7.6,-25, -5.4,-31.5);
+    g.lineTo(5.4,-31.5);
+    g.quadraticCurveTo(7.6,-25, 6.2,-17);
+    g.closePath();
+    modeled(g, -7,-31.5, 7,-17, skin);
+    // loincloth
+    g.beginPath();
+    g.moveTo(-6.6,-19.5); g.lineTo(6.6,-19.5); g.lineTo(4.6,-12); g.lineTo(-4.6,-12); g.closePath();
+    modeled(g, -6.6,-19.5, 6.6,-12, cloth);
+
+    leg(g, 2.6,-18, 9, 9, 5.4, -legSwing, skin, boot);
+
+    // head with pointed ears
+    g.beginPath();
+    g.moveTo(-4.6,-37); g.quadraticCurveTo(-11.5,-40.5, -13,-45);
+    g.quadraticCurveTo(-7.6,-40.5, -4.2,-34); g.closePath();
+    modeled(g, -13,-45, -4.2,-34, shade(skin,-16));
+    g.beginPath();
+    g.moveTo(4.6,-37); g.quadraticCurveTo(11.5,-40.5, 13,-45);
+    g.quadraticCurveTo(7.6,-40.5, 4.2,-34); g.closePath();
+    modeled(g, 4.2,-45, 13,-34, shade(skin,-16));
+    g.beginPath();
+    g.ellipse(0.3,-35.6, 6, 5.8, 0, 0, Math.PI*2);
+    modeled(g, -5.7,-41.4, 6.3,-29.8, skin);
+    g.fillStyle = shade(skin,-55);
+    g.beginPath(); g.ellipse(0.3,-38.2, 4.8, 1.5, 0, 0, Math.PI*2); g.fill();
+    g.fillStyle = "#f5d968";
+    g.beginPath(); g.ellipse(-2,-35.8, 1.4, 1, -0.25, 0, Math.PI*2); g.fill();
+    g.beginPath(); g.ellipse(2.6,-35.8, 1.4, 1, 0.25, 0, Math.PI*2); g.fill();
+
+    // front arm with dagger, drawn last so it reads clearly
+    arm(g, 5,-31, 7, 7, 4.2, -armSwing-0.1, skin, (g2)=>{
+      g2.beginPath(); g2.rect(-1.1,-1, 2.2, 3.4);
+      modeled(g2, -1.1,-1, 1.1,2.4, "#4a3928", false);
+      g2.beginPath();
+      g2.moveTo(-0.5,-1);
+      g2.quadraticCurveTo(4.2,-5.5, 2.4,-11.5);
+      g2.quadraticCurveTo(0.7,-6, -1.5,-1);
+      g2.closePath();
+      modeled(g2, -1.5,-11.5, 2.8,-1, "#b3bac2");
     });
-    g.fillStyle = "#4a5c34";
-    g.beginPath(); g.arc(0,-34,7,0,Math.PI*2); g.fill();
-    g.beginPath(); g.moveTo(-6,-35); g.lineTo(-13,-38); g.lineTo(-6,-31); g.closePath(); g.fill();
-    g.beginPath(); g.moveTo(6,-35); g.lineTo(13,-38); g.lineTo(6,-31); g.closePath(); g.fill();
     g.restore();
   }
 
   function paintOrcFrame(g, phase, color, dark){
-    const legSwing = Math.sin(phase)*0.4, armSwing = -Math.sin(phase)*0.35;
-    const bob = Math.abs(Math.sin(phase))*1.6;
+    const sw = Math.sin(phase);
+    const legSwing = sw*0.26, armSwing = -sw*0.26;
+    const bob = Math.abs(sw)*1.4;
+    const skin = color, skinBack = shade(color,-19);
+    const leather = "#5a4327", metal = "#8d8574", boot = "#3a2c19";
+
+    groundShadow(g, 14, 5);
     g.save();
     g.translate(0,-bob);
-    limb(g,-6,-18,17,6, legSwing, dark);
-    limb(g,6,-18,17,6, -legSwing, dark);
-    const grad = g.createLinearGradient(-12,-38,12,-18);
-    grad.addColorStop(0, lighten(color,18)); grad.addColorStop(1, dark);
-    g.fillStyle = grad;
-    g.beginPath(); g.moveTo(-11,-18); g.lineTo(-12,-38); g.lineTo(12,-38); g.lineTo(11,-18); g.closePath(); g.fill();
-    g.fillStyle = "#2a251d"; g.fillRect(-11,-21,22,3);
-    limb(g,-11,-36,13,5, armSwing+0.2, color);
-    limb(g,11,-36,13,5, -armSwing-0.15, color, (g2)=>{
-      g2.strokeStyle = "#847c62"; g2.lineWidth = 3;
-      g2.beginPath(); g2.moveTo(0,0); g2.lineTo(0,10); g2.stroke();
-      g2.fillStyle = "#5f5847";
-      g2.beginPath(); g2.moveTo(1.5,1); g2.lineTo(10,4); g2.lineTo(9,11); g2.lineTo(1.5,8); g2.closePath(); g2.fill();
+
+    leg(g, -4,-24, 12, 12, 7.4, legSwing, skinBack, shade(boot,-12));
+    arm(g, -9.4,-41, 9, 9, 5.6, armSwing+0.2, skinBack);
+
+    // barrel chest tapering to the waist
+    g.beginPath();
+    g.moveTo(-9.4,-23);
+    g.quadraticCurveTo(-12.4,-33, -10.4,-42);
+    g.lineTo(10.4,-42);
+    g.quadraticCurveTo(12.4,-33, 9.4,-23);
+    g.closePath();
+    modeled(g, -12.4,-42, 12.4,-23, skin);
+    // belt
+    g.beginPath(); g.rect(-9.8,-27, 19.6, 4.4);
+    modeled(g, -9.8,-27, 9.8,-22.6, leather);
+    g.beginPath(); g.rect(-2.2,-26.6, 4.4, 3.6);
+    modeled(g, -2.2,-26.6, 2.2,-23, metal, false);
+
+    leg(g, 4,-24, 12, 12, 7.4, -legSwing, skin, boot);
+
+    // pauldrons: pushed out to the sides and kept low, so they frame the
+    // shoulders instead of crowding the head
+    [[-11.6,-40,-1],[11.6,-40,1]].forEach(p=>{
+      g.beginPath();
+      g.ellipse(p[0],p[1], 6.2, 4, p[2]*0.28, 0, Math.PI*2);
+      modeled(g, p[0]-6.2,p[1]-4, p[0]+6.2,p[1]+4, leather);
+      g.fillStyle = shade(metal,12);
+      for(let k=-1;k<=1;k++){
+        g.beginPath(); g.arc(p[0]+k*3, p[1]-0.4, 0.8, 0, Math.PI*2); g.fill();
+      }
     });
-    g.fillStyle = "#5c6a3a";
-    g.beginPath(); g.arc(0,-43,8.5,0,Math.PI*2); g.fill();
-    g.fillStyle = "#e8e2d0";
-    g.beginPath(); g.moveTo(-4,-40); g.lineTo(-7,-36); g.lineTo(-2,-38); g.closePath(); g.fill();
-    g.beginPath(); g.moveTo(4,-40); g.lineTo(7,-36); g.lineTo(2,-38); g.closePath(); g.fill();
+
+    // thick neck bridging torso and head
+    g.beginPath(); g.rect(-3.2,-47, 6.4, 6);
+    modeled(g, -3.2,-47, 3.2,-41, shade(skin,-14));
+
+    // heavy head with underbite tusks
+    g.beginPath();
+    g.ellipse(0,-52.5, 7.2, 6.6, 0, 0, Math.PI*2);
+    modeled(g, -7.2,-59.1, 7.2,-45.9, shade(skin,6));
+    g.fillStyle = shade(skin,-46);
+    g.beginPath(); g.ellipse(0,-55.4, 5.6, 1.6, 0, 0, Math.PI*2); g.fill();
+    g.fillStyle = "#d4472f";
+    g.beginPath(); g.ellipse(-2.6,-54.2, 1.25, 0.95, 0, 0, Math.PI*2); g.fill();
+    g.beginPath(); g.ellipse(2.6,-54.2, 1.25, 0.95, 0, 0, Math.PI*2); g.fill();
+    // jaw line, with the tusks jutting up from it
+    g.fillStyle = shade(skin,-24);
+    g.beginPath(); g.ellipse(0,-48.4, 5.2, 2.6, 0, 0, Math.PI*2); g.fill();
+    g.fillStyle = "#efe8d4"; g.strokeStyle = "#9b937f"; g.lineWidth = 0.5;
+    g.beginPath(); g.moveTo(-3.4,-47.6); g.quadraticCurveTo(-4.6,-50.6, -2.2,-51.8);
+    g.quadraticCurveTo(-2.8,-49.4, -2,-47.4); g.closePath(); g.fill(); g.stroke();
+    g.beginPath(); g.moveTo(3.4,-47.6); g.quadraticCurveTo(4.6,-50.6, 2.2,-51.8);
+    g.quadraticCurveTo(2.8,-49.4, 2,-47.4); g.closePath(); g.fill(); g.stroke();
+
+    // axe arm in front
+    arm(g, 9.4,-41, 9, 9, 5.6, -armSwing-0.12, skin, (g2)=>{
+      g2.beginPath(); g2.rect(-1.4,-4, 2.8, 14);
+      modeled(g2, -1.4,-4, 1.4,10, "#5a4327", false);
+      g2.beginPath();
+      g2.moveTo(1.2,-2.5);
+      g2.quadraticCurveTo(9.6,-1.5, 10.4,5.5);
+      g2.quadraticCurveTo(5,3, 1.2,4.5);
+      g2.closePath();
+      modeled(g2, 1.2,-2.5, 10.4,5.5, metal);
+    });
     g.restore();
   }
 
   function paintKnightFrame(g, phase, color, dark){
-    const legSwing = Math.sin(phase)*0.3, armSwing = -Math.sin(phase)*0.25;
-    const bob = Math.abs(Math.sin(phase))*1.2;
+    const sw = Math.sin(phase);
+    const legSwing = sw*0.22, armSwing = -sw*0.2;
+    const bob = Math.abs(sw)*1.1;
+    const plate = shade(color,18), plateBack = shade(color,-6);
+    const trim = "#4a443c", crest = "#a6342f";
+
+    groundShadow(g, 13, 4.6);
     g.save();
     g.translate(0,-bob);
-    limb(g,-6,-20,18,5.5, legSwing, dark);
-    limb(g,6,-20,18,5.5, -legSwing, dark);
-    const grad = g.createLinearGradient(-11,-42,11,-20);
-    grad.addColorStop(0, lighten(color,22)); grad.addColorStop(1, dark);
-    g.fillStyle = grad;
-    g.beginPath(); g.moveTo(-11,-20); g.lineTo(-11,-42); g.lineTo(11,-42); g.lineTo(11,-20); g.closePath(); g.fill();
-    g.save();
-    g.translate(-11,-38); g.rotate(armSwing*0.3);
-    g.fillStyle = "#5f5847"; g.fillRect(-3,0,6,16);
-    g.strokeStyle = "#847c62"; g.lineWidth = 1; g.strokeRect(-3,0,6,16);
-    g.restore();
-    limb(g,11,-38,12,5, -armSwing-0.1, color, (g2)=>{
-      g2.fillStyle = "#c6ccd6"; g2.fillRect(-1,-10,2,10);
-      g2.fillStyle = "#5f5847"; g2.fillRect(-3,0,6,2);
+
+    leg(g, -4.2,-28, 14, 14, 6.8, legSwing, plateBack, shade(trim,-14));
+    arm(g, -9.6,-47, 10, 10, 5.4, armSwing+0.18, plateBack);
+
+    // fauld over the hips
+    g.beginPath();
+    g.moveTo(-9.4,-31); g.lineTo(9.4,-31); g.lineTo(7.8,-22); g.lineTo(-7.8,-22); g.closePath();
+    modeled(g, -9.4,-31, 9.4,-22, shade(plate,-14));
+
+    // breastplate
+    g.beginPath();
+    g.moveTo(-8.6,-30);
+    g.quadraticCurveTo(-10.6,-40, -8.8,-48);
+    g.lineTo(8.8,-48);
+    g.quadraticCurveTo(10.6,-40, 8.6,-30);
+    g.closePath();
+    modeled(g, -10.6,-48, 10.6,-30, plate);
+    g.strokeStyle = "rgba(255,255,255,0.25)"; g.lineWidth = 1.4;
+    g.beginPath(); g.moveTo(0,-46.5); g.lineTo(0,-32); g.stroke();
+
+    leg(g, 4.2,-28, 14, 14, 6.8, -legSwing, plate, trim);
+
+    // pauldrons
+    [[-9.6,-47.5,-0.32],[9.6,-47.5,0.32]].forEach(p=>{
+      g.beginPath();
+      g.ellipse(p[0],p[1], 5.4, 4, p[2], 0, Math.PI*2);
+      modeled(g, p[0]-5.4,p[1]-4, p[0]+5.4,p[1]+4, shade(plate,6));
     });
-    g.fillStyle = color;
-    g.beginPath(); g.arc(0,-47,8,0,Math.PI*2); g.fill();
-    g.fillStyle = "#a6342f"; g.fillRect(-2,-58,4,9);
+
+    // great helm: visor slit, breathing holes, crest
+    g.beginPath();
+    g.moveTo(-6.4,-52);
+    g.quadraticCurveTo(-7.2,-61, 0,-62.6);
+    g.quadraticCurveTo(7.2,-61, 6.4,-52);
+    g.quadraticCurveTo(0,-49.4, -6.4,-52);
+    g.closePath();
+    modeled(g, -7.2,-62.6, 7.2,-49.4, plate);
+    g.fillStyle = "#14120e";
+    g.beginPath(); g.rect(-4.6,-57.2, 9.2, 1.9); g.fill();
+    g.beginPath(); g.rect(-0.8,-59.6, 1.6, 3.4); g.fill();
+    for(let k=0;k<3;k++){
+      g.beginPath(); g.arc(-2.4+k*2.4, -52.6, 0.6, 0, Math.PI*2); g.fill();
+    }
+    g.beginPath();
+    g.moveTo(-1.6,-62);
+    g.quadraticCurveTo(0.4,-70, 4.4,-72.4);
+    g.quadraticCurveTo(2.4,-65.6, 2,-61.6);
+    g.closePath();
+    modeled(g, -1.6,-72.4, 4.4,-61.6, crest);
+
+    // shield arm in front, held steady
+    g.save();
+    g.translate(9.6,-47); g.rotate(-armSwing*0.3+0.1);
+    g.beginPath();
+    g.moveTo(-5.4,2); g.lineTo(5.4,2); g.lineTo(5.4,12); g.quadraticCurveTo(0,18.4, -5.4,12); g.closePath();
+    modeled(g, -5.4,2, 5.4,18.4, trim);
+    g.beginPath();
+    g.moveTo(0,5.2); g.lineTo(3,8.2); g.lineTo(0,13.4); g.lineTo(-3,8.2); g.closePath();
+    modeled(g, -3,5.2, 3,13.4, crest, false);
+    g.restore();
     g.restore();
   }
 
   function paintWarlordFrame(g, phase, color, dark){
-    const legSwing = Math.sin(phase)*0.3, armSwing = -Math.sin(phase)*0.3;
-    const bob = Math.abs(Math.sin(phase))*1.4;
+    const sw = Math.sin(phase);
+    const legSwing = sw*0.24, armSwing = -sw*0.22;
+    const bob = Math.abs(sw)*1.3;
+    const armor = shade(color,10), armorBack = shade(color,-14);
+    const trim = "#2b2620", steel = "#8f96a0";
+
+    groundShadow(g, 18, 6);
     g.save();
     g.translate(0,-bob);
-    g.fillStyle = "#3a1414";
+
+    // cloak sweeping behind, drifting with the stride
     g.beginPath();
-    g.moveTo(-10,-46); g.lineTo(-17+legSwing*4,-6); g.lineTo(17+legSwing*4,-6); g.lineTo(10,-46); g.closePath();
-    g.fill();
-    limb(g,-7,-22,20,7, legSwing, dark);
-    limb(g,7,-22,20,7, -legSwing, dark);
-    const grad = g.createLinearGradient(-13,-46,13,-22);
-    grad.addColorStop(0, lighten(color,20)); grad.addColorStop(1, dark);
-    g.fillStyle = grad;
-    g.beginPath(); g.moveTo(-13,-22); g.lineTo(-14,-46); g.lineTo(14,-46); g.lineTo(13,-22); g.closePath(); g.fill();
-    limb(g,-12,-42,13,6, armSwing+0.15, color);
-    limb(g,12,-42,15,6, -armSwing-0.2, color, (g2)=>{
-      g2.strokeStyle = "#5f5847"; g2.lineWidth = 3;
-      g2.beginPath(); g2.moveTo(0,0); g2.lineTo(0,16); g2.stroke();
-      g2.fillStyle = "#847c62";
-      g2.beginPath(); g2.moveTo(1.5,2); g2.lineTo(13,6); g2.lineTo(12,15); g2.lineTo(1.5,12); g2.closePath(); g2.fill();
+    g.moveTo(-10,-58);
+    g.quadraticCurveTo(-20+legSwing*6,-32, -15+legSwing*8,-3);
+    g.lineTo(15+legSwing*8,-3);
+    g.quadraticCurveTo(20+legSwing*6,-32, 10,-58);
+    g.closePath();
+    modeled(g, -20,-58, 20,-3, "#3c1616");
+
+    leg(g, -5,-34, 17, 17, 8.6, legSwing, armorBack, shade(trim,-8));
+    arm(g, -11.6,-58, 12, 12, 6.6, armSwing+0.16, armorBack);
+
+    // heavy cuirass
+    g.beginPath();
+    g.moveTo(-11.4,-33);
+    g.quadraticCurveTo(-14.4,-46, -11.8,-59);
+    g.lineTo(11.8,-59);
+    g.quadraticCurveTo(14.4,-46, 11.4,-33);
+    g.closePath();
+    modeled(g, -14.4,-59, 14.4,-33, armor);
+    g.beginPath(); g.rect(-11.6,-40, 23.2, 5);
+    modeled(g, -11.6,-40, 11.6,-35, trim);
+
+    leg(g, 5,-34, 17, 17, 8.6, -legSwing, armor, trim);
+
+    // spiked pauldrons -- the boss silhouette read
+    [[-12.4,-58,-1],[12.4,-58,1]].forEach(p=>{
+      g.beginPath();
+      g.ellipse(p[0],p[1], 6.8, 4.8, p[2]*0.3, 0, Math.PI*2);
+      modeled(g, p[0]-6.8,p[1]-4.8, p[0]+6.8,p[1]+4.8, shade(armor,-10));
+      g.beginPath();
+      g.moveTo(p[0]-2.4*p[2], p[1]-2.6);
+      g.lineTo(p[0]+4*p[2], p[1]-10.5);
+      g.lineTo(p[0]+3.2*p[2], p[1]-1.6);
+      g.closePath();
+      modeled(g, p[0]-3,p[1]-10.5, p[0]+4.6,p[1]-1.6, "#8a8272");
     });
-    g.fillStyle = color;
-    g.beginPath(); g.arc(0,-52,9.5,0,Math.PI*2); g.fill();
-    g.strokeStyle = "#e8e2d0"; g.lineWidth = 2.4; g.lineCap = "round";
-    g.beginPath(); g.moveTo(-6,-58); g.quadraticCurveTo(-14,-64,-11,-71); g.stroke();
-    g.beginPath(); g.moveTo(6,-58); g.quadraticCurveTo(14,-64,11,-71); g.stroke();
+
+    // horned helm
+    g.beginPath();
+    g.ellipse(0,-68, 8.6, 8, 0, 0, Math.PI*2);
+    modeled(g, -8.6,-76, 8.6,-60, armor);
+    g.fillStyle = "#110d0a";
+    g.beginPath(); g.rect(-5.6,-70.4, 11.2, 2.4); g.fill();
+    g.fillStyle = "#f07a44";
+    g.beginPath(); g.ellipse(-2.6,-69.2, 1.4, 1, 0, 0, Math.PI*2); g.fill();
+    g.beginPath(); g.ellipse(2.6,-69.2, 1.4, 1, 0, 0, Math.PI*2); g.fill();
+    [[-1,-5.8],[1,5.8]].forEach(h=>{
+      const s = h[0], x0 = h[1];
+      g.beginPath();
+      g.moveTo(x0,-73);
+      g.quadraticCurveTo(x0+s*10,-77.5, x0+s*8.6,-87);
+      g.quadraticCurveTo(x0+s*5,-79.5, x0+s*2,-74);
+      g.closePath();
+      modeled(g, x0,-87, x0+s*10,-73, "#e4dcc6");
+    });
+
+    // two-handed axe in the leading hand
+    arm(g, 11.6,-58, 12, 12, 6.6, -armSwing-0.14, armor, (g2)=>{
+      g2.beginPath(); g2.rect(-1.8,-8, 3.6, 22);
+      modeled(g2, -1.8,-8, 1.8,14, "#4a3928", false);
+      g2.beginPath();
+      g2.moveTo(1.6,-3);
+      g2.quadraticCurveTo(13,-2, 14,7);
+      g2.quadraticCurveTo(6.6,4, 1.6,5.6);
+      g2.closePath();
+      modeled(g2, 1.6,-3, 14,7, steel);
+      g2.beginPath();
+      g2.moveTo(-1.6,-3);
+      g2.quadraticCurveTo(-8,-2, -8.6,4.6);
+      g2.quadraticCurveTo(-4,2.6, -1.6,4.2);
+      g2.closePath();
+      modeled(g2, -8.6,-3, -1.6,4.6, shade(steel,-14));
+    });
     g.restore();
   }
 
