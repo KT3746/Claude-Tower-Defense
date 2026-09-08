@@ -4,34 +4,68 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Archivo:wght@500;600;700;800&display=swap">
 <style>
   :root{
-    --bg:#14110d;
+    --bg:#120f0a;
     --panel:#241f17;
     --panel-2:#2f2a1f;
     --panel-3:#3a3323;
+    --panel-4:#453c28;
     --line:#4a4130;
     --line-soft:#3a3323;
-    --ink:#ece3cf;
+    --line-bright:#655939;
+    --ink:#f3ead4;
     --ink-dim:#b3a686;
     --ink-faint:#7d735a;
-    --red:#a6342f;
-    --red-bright:#c94842;
+    --red:#9c2f2b;
+    --red-bright:#d65650;
     --green:#4f7a66;
     --green-bright:#6fa88d;
     --gold:#c6923d;
-    --gold-bright:#e0ac57;
+    --gold-bright:#f0b95f;
+    --gold-dim:#8a6a34;
     --shadow:rgba(0,0,0,.55);
-    --radius:10px;
+    --radius:14px;
+    --radius-sm:10px;
     --frame-pad:8px;
+    /* elevacao: uma sombra de contato justa (define a silhueta) + uma
+       sombra ambiente larga e suave (da a sensacao de profundidade) --
+       a dupla-camada e o que separa "painel flutuando" de "caixa lisa" */
+    --lift-1: 0 1px 2px rgba(0,0,0,.5), 0 6px 16px -4px rgba(0,0,0,.5);
+    --lift-2: 0 2px 4px rgba(0,0,0,.55), 0 16px 34px -10px rgba(0,0,0,.65);
+    --hairline-top: inset 0 1px 0 rgba(255,255,255,.06);
+    --hairline-bottom: inset 0 -1px 0 rgba(0,0,0,.35);
+    --focus-ring: 0 0 0 3px rgba(240,185,95,.35);
   }
 
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
 
+  html{
+    background:var(--bg);
+    position:relative;
+  }
+  /* grao de filme sobre tudo -- opacidade minima, so pra quebrar o
+     bandeamento liso dos gradientes e dar uma textura "material" ao fundo */
+  html::before{
+    content:"";
+    position:fixed;
+    inset:0;
+    z-index:0;
+    pointer-events:none;
+    opacity:.05;
+    mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
   body{
+    position:relative;
+    z-index:1;
     background:
-      radial-gradient(1200px 700px at 50% -10%, #241d13 0%, var(--bg) 55%);
+      radial-gradient(1100px 640px at 50% -12%, #2a2115 0%, transparent 60%),
+      radial-gradient(900px 500px at 15% 110%, #1c150d 0%, transparent 55%),
+      var(--bg);
     color:var(--ink);
     font-family:"Archivo","Segoe UI",Roboto,sans-serif;
+    -webkit-font-smoothing:antialiased;
     min-height:100vh;
     display:flex;
     justify-content:center;
@@ -67,49 +101,71 @@
     background:linear-gradient(180deg,var(--panel-2),var(--panel));
     border:1px solid var(--line);
     border-radius:var(--radius);
-    padding:14px 20px;
-    box-shadow:0 6px 18px var(--shadow), inset 0 1px 0 rgba(255,255,255,.03);
+    padding:13px 22px;
+    box-shadow:var(--lift-1), var(--hairline-top);
   }
 
-  .brand{display:flex;align-items:center;gap:12px;}
+  .brand{display:flex;align-items:center;gap:13px;}
   .brand-mark{
-    font-size:2rem;
-    line-height:1;
-    filter:drop-shadow(0 2px 3px rgba(0,0,0,.6));
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    width:42px;
+    height:42px;
+    flex:0 0 auto;
+    border-radius:11px;
+    background:radial-gradient(circle at 50% 30%, #4a3d24, #241d13 78%);
+    box-shadow:var(--hairline-top), 0 0 0 1px var(--line-soft), 0 4px 10px rgba(0,0,0,.45);
+  }
+  .brand-mark svg{
+    width:26px;
+    height:26px;
+    color:var(--gold-bright);
+    filter:drop-shadow(0 1px 1px rgba(0,0,0,.6));
   }
   .brand h1{
     font-size:1.5rem;
     letter-spacing:.03em;
     color:var(--gold-bright);
+    text-shadow:0 2px 6px rgba(0,0,0,.4);
   }
   .tagline{
-    margin:2px 0 0;
+    margin:3px 0 0;
     font-size:.78rem;
     color:var(--ink-faint);
     letter-spacing:.04em;
   }
 
-  .stats{display:flex;gap:10px;flex-wrap:wrap;}
+  .stats{display:flex;gap:9px;flex-wrap:wrap;}
   .stat{
     display:flex;
-    flex-direction:column;
-    align-items:flex-end;
-    padding:6px 14px;
-    background:var(--panel-3);
+    align-items:center;
+    gap:9px;
+    padding:7px 14px 7px 10px;
+    background:linear-gradient(180deg, var(--panel-4), var(--panel-3));
     border:1px solid var(--line-soft);
-    border-radius:8px;
-    min-width:74px;
+    border-radius:11px;
+    min-width:80px;
+    box-shadow:var(--hairline-top), 0 2px 6px rgba(0,0,0,.3);
   }
+  .stat-ic{
+    width:19px;
+    height:19px;
+    flex:0 0 auto;
+    filter:drop-shadow(0 1px 1px rgba(0,0,0,.5));
+  }
+  .stat-text{display:flex;flex-direction:column;align-items:flex-start;line-height:1.15;}
   .stat-label{
-    font-size:.65rem;
+    font-size:.62rem;
     text-transform:uppercase;
     letter-spacing:.09em;
     color:var(--ink-faint);
   }
   .stat-value{
     font-size:1.15rem;
-    font-weight:700;
+    font-weight:800;
     font-variant-numeric:tabular-nums;
+    letter-spacing:-.01em;
   }
   .stat--gold .stat-value{color:var(--gold-bright);}
   .stat--lives .stat-value{color:var(--red-bright);}
@@ -118,7 +174,7 @@
   /* ---------- Board layout ---------- */
   .board{
     display:grid;
-    grid-template-columns:minmax(0,1fr) 260px;
+    grid-template-columns:minmax(0,1fr) 284px;
     gap:14px;
     align-items:start;
   }
@@ -132,24 +188,25 @@
     border-radius:var(--radius);
     padding:var(--frame-pad);
     background:linear-gradient(180deg,var(--panel-2),var(--panel));
-    box-shadow:0 10px 30px var(--shadow), inset 0 0 0 1px rgba(0,0,0,.3);
+    box-shadow:var(--lift-2), inset 0 0 0 1px rgba(0,0,0,.3), var(--hairline-top);
   }
   @media (prefers-reduced-motion: no-preference){
     .battlefield-frame{animation:torchflicker 5s ease-in-out infinite;}
   }
   @keyframes torchflicker{
-    0%,100%{box-shadow:0 10px 30px var(--shadow), inset 0 0 0 1px rgba(0,0,0,.3), 0 0 40px -18px rgba(198,146,61,.35);}
-    50%{box-shadow:0 10px 30px var(--shadow), inset 0 0 0 1px rgba(0,0,0,.3), 0 0 55px -14px rgba(198,146,61,.5);}
+    0%,100%{box-shadow:var(--lift-2), inset 0 0 0 1px rgba(0,0,0,.3), var(--hairline-top), 0 0 40px -18px rgba(198,146,61,.35);}
+    50%{box-shadow:var(--lift-2), inset 0 0 0 1px rgba(0,0,0,.3), var(--hairline-top), 0 0 55px -14px rgba(198,146,61,.5);}
   }
 
   /* Largura/altura reais sao definidas em pixels por layout(), que encaixa
      o tabuleiro na viewport em vez de deixar a pagina fluir em volta dele. */
   #game{
     display:block;
-    border-radius:6px;
+    border-radius:8px;
     cursor:crosshair;
     background:#222;
     touch-action:none;   /* o toque no tabuleiro constroi, nao rola a pagina */
+    box-shadow:inset 0 0 0 1px rgba(0,0,0,.45);
   }
 
   .overlay{
@@ -176,7 +233,26 @@
     font-size:1.7rem;
     color:var(--gold-bright);
     letter-spacing:.02em;
+    text-shadow:0 2px 8px rgba(0,0,0,.5);
   }
+  /* divisor ornamental: dois tracos que se afinam ate um losango central,
+     no lugar de uma linha reta generica */
+  .ornament{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    width:100%;
+    max-width:200px;
+    color:var(--gold-dim);
+  }
+  .ornament::before, .ornament::after{
+    content:"";
+    flex:1;
+    height:1px;
+    background:linear-gradient(90deg, transparent, currentColor);
+  }
+  .ornament::after{background:linear-gradient(90deg, currentColor, transparent);}
+  .ornament svg{width:9px;height:9px;flex:0 0 auto;color:var(--gold);}
   .overlay-card p{
     margin:0;
     color:var(--ink-dim);
@@ -187,6 +263,7 @@
     color:var(--ink);
     font-weight:700;
   }
+  .overlay-card .btn--primary{box-shadow:var(--lift-1), var(--hairline-top);}
 
   .toast{
     position:absolute;
@@ -218,39 +295,59 @@
     border:1px solid var(--line);
     border-radius:var(--radius);
     padding:14px;
-    box-shadow:0 6px 18px var(--shadow);
+    box-shadow:var(--lift-1), var(--hairline-top);
   }
   .panel-section.hidden{display:none;}
   .panel-section h2{
-    font-size:.95rem;
-    letter-spacing:.05em;
-    color:var(--gold-bright);
-    margin-bottom:10px;
+    font-size:.78rem;
+    font-family:"Archivo","Segoe UI",Roboto,sans-serif;
+    font-weight:800;
+    text-transform:uppercase;
+    letter-spacing:.11em;
+    color:var(--gold-dim);
+    margin:0 0 11px;
+    padding-bottom:8px;
+    border-bottom:1px solid var(--line-soft);
   }
 
   .tower-cards{display:flex;flex-direction:column;gap:8px;}
   .tower-card{
+    --accent:var(--gold);
+    position:relative;
     display:flex;
     align-items:center;
     gap:10px;
-    padding:8px 10px;
-    background:var(--panel-3);
+    padding:8px 12px 8px 14px;
+    background:linear-gradient(180deg, var(--panel-4), var(--panel-3));
     border:1px solid var(--line-soft);
-    border-radius:8px;
+    border-radius:var(--radius-sm);
     cursor:pointer;
     text-align:left;
     color:var(--ink);
     font-family:inherit;
-    transition:border-color .15s ease, background .15s ease, transform .1s ease;
+    box-shadow:var(--hairline-top);
+    transition:border-color .15s ease, background .15s ease, transform .12s ease, box-shadow .15s ease;
   }
-  .tower-card:hover{border-color:var(--gold);}
-  .tower-card:active{transform:scale(.98);}
+  /* faixa de identidade da torre, na cor do proprio tipo -- reaproveita
+     TOWER_TYPES.color em vez de repetir a paleta aqui */
+  .tower-card::before{
+    content:"";
+    position:absolute;
+    left:0; top:8px; bottom:8px;
+    width:3px;
+    border-radius:2px;
+    background:var(--accent);
+    opacity:.85;
+  }
+  .tower-card:hover{border-color:var(--line-bright);transform:translateY(-1px);box-shadow:var(--hairline-top), 0 4px 10px rgba(0,0,0,.3);}
+  .tower-card:active{transform:translateY(0) scale(.98);}
   .tower-card.armed{
     border-color:var(--gold-bright);
-    background:#3d3420;
-    box-shadow:0 0 0 1px var(--gold-bright) inset;
+    background:linear-gradient(180deg,#453a22,#39301e);
+    box-shadow:0 0 0 1px var(--gold-bright) inset, 0 0 14px -4px rgba(240,185,95,.5);
   }
-  .tower-card canvas{flex:0 0 auto;}
+  .tower-card:disabled{opacity:.45;cursor:not-allowed;}
+  .tower-card canvas{flex:0 0 auto;filter:drop-shadow(0 2px 3px rgba(0,0,0,.5));}
   .tower-card .tc-info{flex:1;min-width:0;}
   .tower-card .tc-name{
     font-weight:700;
@@ -299,39 +396,54 @@
 
   .btn{
     appearance:none;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    gap:7px;
     border:1px solid var(--line-soft);
-    background:var(--panel-3);
+    background:linear-gradient(180deg, var(--panel-4), var(--panel-3));
     color:var(--ink);
     font-family:inherit;
     font-weight:700;
     font-size:.8rem;
     letter-spacing:.02em;
-    padding:9px 12px;
-    border-radius:8px;
+    padding:10px 14px;
+    border-radius:var(--radius-sm);
     cursor:pointer;
-    transition:border-color .15s ease, background .15s ease, transform .1s ease, opacity .15s ease;
+    box-shadow:var(--hairline-top), var(--hairline-bottom), 0 1px 0 rgba(0,0,0,.3);
+    transition:border-color .15s ease, background .15s ease, transform .1s ease, box-shadow .1s ease, opacity .15s ease;
   }
-  .btn:hover:not(:disabled){border-color:var(--gold);}
-  .btn:active:not(:disabled){transform:scale(.97);}
+  .btn-ic{width:16px;height:16px;flex:0 0 auto;}
+  .btn .btn-label{overflow:hidden;text-overflow:ellipsis;}
+  .btn:hover:not(:disabled){border-color:var(--line-bright);}
+  .btn:active:not(:disabled){transform:translateY(1px);box-shadow:var(--hairline-bottom);}
   .btn:disabled{opacity:.4;cursor:not-allowed;}
   .btn:focus-visible{outline:2px solid var(--gold-bright);outline-offset:2px;}
   .btn--primary{
     background:linear-gradient(180deg,var(--red-bright),var(--red));
     border-color:#7a2521;
-    color:#fbe9e6;
+    color:#fff6f2;
     width:100%;
+    box-shadow:var(--hairline-top), 0 2px 0 #6f1f1c, 0 6px 16px -6px rgba(157,40,35,.6);
   }
-  .btn--ghost{background:transparent;}
+  .btn--primary:active:not(:disabled){box-shadow:none;}
+  .btn--ghost{background:transparent;box-shadow:none;}
+  .btn--ghost:hover:not(:disabled){background:rgba(255,255,255,.03);}
   .btn--sell{border-color:var(--red);color:var(--red-bright);}
-  .btn--icon{width:38px;padding:9px 0;text-align:center;flex:0 0 auto;}
+  .btn--icon{width:40px;padding:9px 0;text-align:center;flex:0 0 auto;}
+  .btn--icon .btn-ic{width:18px;height:18px;}
+  .btn .btn-label{white-space:nowrap;}
 
   .actions{display:flex;flex-direction:column;gap:8px;}
-  .btn-row{display:flex;gap:8px;}
-  .btn-row .btn{flex:1;}
+  .btn-row{display:flex;gap:6px;min-width:0;}
+  .btn-row .btn{flex:1;min-width:0;padding-left:9px;padding-right:9px;}
+  .btn-row .btn .btn-ic{margin-right:-1px;}
+  #btn-mute{flex:0 0 40px;}
   .actions .btn-row:last-child{align-items:center;}
 
-  .ti-actions{display:flex;gap:8px;}
-  .ti-actions .btn{flex:1;}
+  .ti-actions{display:flex;gap:6px;min-width:0;}
+  .ti-actions .btn{flex:1;min-width:0;padding-left:8px;padding-right:8px;font-size:.76rem;}
+  .ti-actions .btn-ic{margin-right:-2px;}
 
   .legend{
     display:flex;
@@ -380,12 +492,11 @@
   .is-compact .btn{min-height:42px;padding:8px 10px;}
   .is-compact .tower-card .tc-desc{display:none;}
   .is-compact .tower-card .tc-name kbd{display:none;}
-  /* pausa/velocidade/som/reiniciar viram botoes de icone quando o espaco aperta */
+  /* pausa/velocidade/som/reiniciar viram botoes so-icone quando o espaco aperta */
   .is-compact .btn--icon{width:42px;}
-  .is-compact #btn-restart{
-    flex:0 0 auto;width:42px;padding:8px 0;text-align:center;font-size:0;
-  }
-  .is-compact #btn-restart::after{content:"\21ba";font-size:1.15rem;line-height:1;}
+  .is-compact #btn-restart{flex:0 0 auto;width:42px;padding:8px 0;}
+  .is-compact #btn-restart .btn-label{display:none;}
+  .is-compact #btn-restart .btn-ic{width:18px;height:18px;}
   /* as duas secoes trocaveis (arsenal / torre selecionada) tem altura fixa,
      senao o tabuleiro mudaria de tamanho a cada torre selecionada */
   .is-compact #arsenal,
@@ -433,6 +544,11 @@
   .is-side .actions{grid-template-columns:1fr 1fr;}
   .is-side #btn-start-wave{grid-column:span 2;width:auto;}
   .is-side .actions .btn{width:auto;}
+  /* painel estreito demais pra icone+rotulo nos 4 controles: pausa vira
+     so-icone (o simbolo ja diz tudo, como em qualquer player) e velocidade
+     vira so-numero (o icone e que sobra ali, o "×2" e a informacao real) */
+  .is-side #btn-pause .btn-label{display:none;}
+  .is-side #btn-speed .btn-ic{display:none;}
   .is-side #tower-info .ti-actions{flex-direction:column;}
   .is-side .control-panel{overflow-y:auto;}
   @media (max-height:380px){
@@ -445,19 +561,90 @@
   ::selection{background:var(--gold);color:#1a1610;}
 </style>
 
+<!-- Sprite de icones: um unico bloco de <symbol> reaproveitado via <use> em
+     toda a interface, no lugar de emoji (rendem diferente em cada SO/fonte)
+     ou glifos unicode soltos (⟲, ⏸). Cor sempre por currentColor, herdada
+     do elemento que usa o icone -- assim ele acompanha o tema do botao. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="ic-castle" viewBox="0 0 24 24">
+      <rect x="2" y="12" width="20" height="9"/>
+      <rect x="2" y="7" width="4" height="6"/>
+      <rect x="18" y="7" width="4" height="6"/>
+      <rect x="9" y="9" width="6" height="4"/>
+      <rect x="1.3" y="5" width="2" height="2.6"/>
+      <rect x="4.7" y="5" width="2" height="2.6"/>
+      <rect x="17.3" y="5" width="2" height="2.6"/>
+      <rect x="20.7" y="5" width="2" height="2.6"/>
+      <rect x="9" y="7" width="2" height="2.4"/>
+      <rect x="13" y="7" width="2" height="2.4"/>
+      <rect x="9.5" y="15" width="5" height="6" style="fill:var(--panel,#241f17)"/>
+      <line x1="3.5" y1="5" x2="3.5" y2="1.3" stroke="currentColor" stroke-width="1.2"/>
+      <path d="M3.5 1.5 L8 2.9 L3.5 4.3 Z" style="fill:var(--red-bright,#c94842)"/>
+    </symbol>
+    <symbol id="ic-coin" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="9" style="fill:var(--gold-bright,#e0ac57)"/>
+      <circle cx="12" cy="12" r="9" fill="none" style="stroke:var(--gold,#c6923d)" stroke-width="1.6"/>
+      <path d="M12 7.3v9.4M9.7 9.2c0-1 1-1.7 2.3-1.7s2.3.8 2.3 1.7-1 1.4-2.3 1.8c-1.4.4-2.3 1-2.3 1.9s1 1.7 2.3 1.7 2.3-.8 2.3-1.7" fill="none" style="stroke:var(--panel,#241f17)" stroke-width="1.3" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="ic-heart" viewBox="0 0 24 24">
+      <path d="M12 20.3s-7.3-4.5-9.5-8.9C.9 8 2.5 4.7 5.7 4.2c2-.3 3.6.6 4.8 2.2.4.6 1.1 1.4 1.5 1.9.3-.5 1-1.3 1.4-1.9 1.2-1.6 2.9-2.5 4.9-2.2 3.2.5 4.8 3.8 3.3 7.2-2.2 4.4-9.5 8.9-9.5 8.9z" style="fill:var(--red-bright,#c94842)"/>
+    </symbol>
+    <symbol id="ic-flag" viewBox="0 0 24 24">
+      <line x1="5" y1="3" x2="5" y2="21" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+      <path d="M5 4.4c3.6-1.5 5.4 1.4 8.8 0s5.7 0 5.7 0V12c-3.4 1.5-5.4-1.4-8.8 0s-5.7 0-5.7 0z" style="fill:var(--gold-bright,#e0ac57)"/>
+    </symbol>
+    <symbol id="ic-pause" viewBox="0 0 24 24">
+      <rect x="6" y="4" width="4" height="16" rx="1" fill="currentColor"/>
+      <rect x="14" y="4" width="4" height="16" rx="1" fill="currentColor"/>
+    </symbol>
+    <symbol id="ic-play" viewBox="0 0 24 24">
+      <path d="M7 4.2v15.6l13-7.8z" fill="currentColor"/>
+    </symbol>
+    <symbol id="ic-speed" viewBox="0 0 24 24">
+      <path d="M13 2 4 14h6l-1 8 9-12h-6z" fill="currentColor"/>
+    </symbol>
+    <symbol id="ic-sound" viewBox="0 0 24 24">
+      <path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor"/>
+      <path d="M16.3 9.6a4 4 0 0 1 0 4.8M18.8 7.2a7.4 7.4 0 0 1 0 9.6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="ic-mute" viewBox="0 0 24 24">
+      <path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor"/>
+      <path d="M16 9.5l5 5M21 9.5l-5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="ic-restart" viewBox="0 0 24 24">
+      <path d="M20 8a8 8 0 1 0 1.2 7.3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      <path d="M21 3v5.3h-5.3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="ic-sword" viewBox="0 0 24 24">
+      <path d="M14 3l7 7-1.6 1.6L18 10l-6.6 6.6-2-2L16 7.4 14.6 6z" fill="currentColor"/>
+      <path d="M9.4 15.4 4 20.8M6.6 12.6l-2 2M5 18.7h3.3v-3.3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="ic-coins" viewBox="0 0 24 24">
+      <ellipse cx="9" cy="7.5" rx="6" ry="3" style="fill:var(--gold-bright,#e0ac57)"/>
+      <path d="M3 7.5v4c0 1.7 2.7 3 6 3s6-1.3 6-3v-4" style="fill:var(--gold,#c6923d)"/>
+      <ellipse cx="15" cy="13.5" rx="6" ry="3" style="fill:var(--gold-bright,#e0ac57)"/>
+      <path d="M9 13.5v4c0 1.7 2.7 3 6 3s6-1.3 6-3v-4" style="fill:var(--gold,#c6923d)"/>
+    </symbol>
+    <symbol id="ic-diamond" viewBox="0 0 24 24">
+      <path d="M12 2 22 12 12 22 2 12z" fill="currentColor"/>
+    </symbol>
+  </defs>
+</svg>
+
 <div class="app">
   <header class="topbar">
     <div class="brand">
-      <span class="brand-mark" aria-hidden="true">🏰</span>
+      <span class="brand-mark" aria-hidden="true"><svg><use href="#ic-castle"/></svg></span>
       <div class="brand-text">
         <h1>Muralha</h1>
         <p class="tagline">Defenda o portão contra o cerco</p>
       </div>
     </div>
     <div class="stats" role="status" aria-live="polite">
-      <div class="stat stat--gold"><span class="stat-label">Ouro</span><span class="stat-value" id="stat-gold">150</span></div>
-      <div class="stat stat--lives"><span class="stat-label">Vidas</span><span class="stat-value" id="stat-lives">20</span></div>
-      <div class="stat stat--wave"><span class="stat-label">Onda</span><span class="stat-value"><span id="stat-wave">0</span>/15</span></div>
+      <div class="stat stat--gold"><svg class="stat-ic" aria-hidden="true"><use href="#ic-coin"/></svg><span class="stat-text"><span class="stat-label">Ouro</span><span class="stat-value" id="stat-gold">150</span></span></div>
+      <div class="stat stat--lives"><svg class="stat-ic" aria-hidden="true"><use href="#ic-heart"/></svg><span class="stat-text"><span class="stat-label">Vidas</span><span class="stat-value" id="stat-lives">20</span></span></div>
+      <div class="stat stat--wave"><svg class="stat-ic" aria-hidden="true"><use href="#ic-flag"/></svg><span class="stat-text"><span class="stat-label">Onda</span><span class="stat-value"><span id="stat-wave">0</span>/15</span></span></div>
     </div>
   </header>
 
@@ -472,6 +659,7 @@
           <h2>O cerco se aproxima</h2>
           <p>Construa torres ao longo da estrada para deter os invasores antes que alcancem o portão. Você tem <span class="overlay-stat">15 ondas</span> pela frente — a cada cinco, um chefe de guerra lidera o ataque.</p>
           <p id="best-wave-line" style="display:none">Melhor resultado até agora: <span class="overlay-stat" id="best-wave-value"></span></p>
+          <span class="ornament" aria-hidden="true"><svg><use href="#ic-diamond"/></svg></span>
           <button class="btn btn--primary" id="btn-begin" style="max-width:220px">Iniciar defesa</button>
         </div>
       </div>
@@ -479,6 +667,7 @@
       <div class="overlay hidden" id="overlay-pause">
         <div class="overlay-card">
           <h2>Pausado</h2>
+          <span class="ornament" aria-hidden="true"><svg><use href="#ic-diamond"/></svg></span>
           <button class="btn btn--primary" id="btn-resume" style="max-width:220px">Continuar</button>
         </div>
       </div>
@@ -487,6 +676,7 @@
         <div class="overlay-card">
           <h2 id="end-title">Derrota</h2>
           <p id="end-desc"></p>
+          <span class="ornament" aria-hidden="true"><svg><use href="#ic-diamond"/></svg></span>
           <button class="btn btn--primary" id="btn-restart-2" style="max-width:220px">Reiniciar</button>
         </div>
       </div>
@@ -506,19 +696,19 @@
           <div>Dano <b id="ti-dmg"></b> · Alcance <b id="ti-range"></b></div>
         </div>
         <div class="ti-actions">
-          <button class="btn" id="btn-upgrade">Melhorar</button>
-          <button class="btn btn--sell" id="btn-sell">Vender</button>
+          <button class="btn" id="btn-upgrade"><svg class="btn-ic" aria-hidden="true"><use href="#ic-sword"/></svg><span class="btn-label">Melhorar</span></button>
+          <button class="btn btn--sell" id="btn-sell"><svg class="btn-ic" aria-hidden="true"><use href="#ic-coins"/></svg><span class="btn-label">Vender</span></button>
         </div>
       </div>
 
       <div class="panel-section actions">
-        <button class="btn btn--primary" id="btn-start-wave">Convocar Onda 1</button>
+        <button class="btn btn--primary" id="btn-start-wave"><span class="btn-label">Convocar Onda 1</span></button>
         <div class="btn-row">
-          <button class="btn" id="btn-pause">Pausar</button>
-          <button class="btn" id="btn-speed">Velocidade ×1</button>
-          <button class="btn btn--icon" id="btn-mute" aria-label="Alternar som">🔊</button>
+          <button class="btn" id="btn-pause"><svg class="btn-ic" aria-hidden="true"><use href="#ic-pause"/></svg><span class="btn-label">Pausar</span></button>
+          <button class="btn" id="btn-speed"><svg class="btn-ic" aria-hidden="true"><use href="#ic-speed"/></svg><span class="btn-label">×1</span></button>
+          <button class="btn btn--icon" id="btn-mute" aria-label="Alternar som"><svg class="btn-ic" aria-hidden="true"><use href="#ic-sound"/></svg></button>
         </div>
-        <button class="btn btn--ghost" id="btn-restart">Reiniciar partida</button>
+        <button class="btn btn--ghost" id="btn-restart"><svg class="btn-ic" aria-hidden="true"><use href="#ic-restart"/></svg><span class="btn-label">Reiniciar partida</span></button>
       </div>
     </aside>
   </main>
@@ -1859,6 +2049,11 @@
   // ============================================================
   // Tower cards (HUD)
   // ============================================================
+  // Cor de destaque de cada carta na lateral esquerda -- separada da cor do
+  // projetil (t.color) porque a do canhao e quase preta, perfeita pra uma
+  // bala de ferro mas invisivel como friso de UI sobre o painel escuro.
+  const TOWER_ACCENT = {archer:"#e0ac57", cannon:"#9a9080", mage:"#6fa88d", ballista:"#c9a06a"};
+
   function renderTowerCards(){
     const wrap = document.getElementById("tower-cards");
     wrap.innerHTML = "";
@@ -1867,6 +2062,7 @@
       card.className = "tower-card";
       card.type = "button";
       card.dataset.key = t.key;
+      card.style.setProperty("--accent", TOWER_ACCENT[t.key] || t.color);
       card.innerHTML =
         '<canvas width="40" height="48" class="tc-canvas"></canvas>' +
         '<div class="tc-info">' +
@@ -1904,15 +2100,23 @@
 
   // Rotulos dos botoes de acao. No celular o espaco horizontal e curto, entao
   // eles encolhem pra uma palavra / um icone (ver .is-compact no CSS).
+  // setLabel() so toca o <span class="btn-label">, preservando o icone SVG
+  // que fica ao lado dele dentro do mesmo botao.
+  function setLabel(btn, text){
+    const lbl = btn.querySelector(".btn-label");
+    if(lbl) lbl.textContent = text; else btn.textContent = text;
+  }
   function refreshActionLabels(){
     const sw = document.getElementById("btn-start-wave");
-    if(ended)            sw.textContent = "Fim de jogo";
-    else if(waveInProgress) sw.textContent = compactUI ? "Em curso…" : "Onda em curso…";
-    else                 sw.textContent = (compactUI ? "Onda " : "Convocar Onda ")+Math.min(wave+1, MAX_WAVE);
-    document.getElementById("btn-pause").textContent =
-      compactUI ? (paused ? "Retomar" : "Pausa") : (paused ? "Continuar" : "Pausar");
-    document.getElementById("btn-speed").textContent =
-      (compactUI ? "×" : "Velocidade ×")+speedMul;
+    if(ended)            setLabel(sw, "Fim de jogo");
+    else if(waveInProgress) setLabel(sw, compactUI ? "Em curso…" : "Onda em curso…");
+    else                 setLabel(sw, (compactUI ? "Onda " : "Convocar Onda ")+Math.min(wave+1, MAX_WAVE));
+
+    const pauseBtn = document.getElementById("btn-pause");
+    pauseBtn.querySelector("use").setAttribute("href", paused ? "#ic-play" : "#ic-pause");
+    setLabel(pauseBtn, compactUI && !paused ? "Pausa" : (paused ? "Retomar" : "Pausar"));
+
+    setLabel(document.getElementById("btn-speed"), "×"+speedMul);
   }
 
   function updateHUD(){
@@ -1944,13 +2148,13 @@
     document.getElementById("ti-range").textContent = Math.round(def.range||t.range);
     const upgBtn = document.getElementById("btn-upgrade");
     if(tw.level>=2){
-      upgBtn.textContent = "Nível máximo";
+      setLabel(upgBtn, "Nível máximo");
       upgBtn.disabled = true;
     } else {
-      upgBtn.textContent = "Melhorar ("+t.upgradeCost+")";
+      setLabel(upgBtn, "Melhorar ("+t.upgradeCost+")");
       upgBtn.disabled = gold < t.upgradeCost;
     }
-    document.getElementById("btn-sell").textContent = "Vender (+"+sellValue(tw)+")";
+    setLabel(document.getElementById("btn-sell"), "Vender (+"+sellValue(tw)+")");
   }
   function hideTowerInfo(){
     document.getElementById("arsenal").classList.remove("hidden");
@@ -2394,9 +2598,11 @@
     speedMul = speedMul===1 ? 2 : 1;
     refreshActionLabels();
   });
-  document.getElementById("btn-mute").addEventListener("click", (e)=>{
+  document.getElementById("btn-mute").addEventListener("click", ()=>{
     muted = !muted;
-    e.target.textContent = muted ? "🔇" : "🔊";
+    const muteBtn = document.getElementById("btn-mute");
+    muteBtn.querySelector("use").setAttribute("href", muted ? "#ic-mute" : "#ic-sound");
+    muteBtn.setAttribute("aria-label", muted ? "Ativar som" : "Silenciar");
   });
   function doRestart(){
     document.getElementById("overlay-end").classList.add("hidden");
