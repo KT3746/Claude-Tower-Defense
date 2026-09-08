@@ -786,6 +786,24 @@
     return WAYPOINTS[WAYPOINTS.length-1];
   }
 
+  // Direcao (vetor unitario) do trecho da estrada em `dist` -- usada pra
+  // paralelepipedos de calcamento, que precisam da normal (perpendicular)
+  // pra se espalhar na largura da pista em vez de ficarem enfileirados
+  // no centro dela.
+  function tangentAtDistance(dist){
+    dist = Math.max(0, Math.min(TOTAL_LEN-0.001, dist));
+    let acc=0;
+    for(let i=0;i<SEG_LEN.length;i++){
+      if(dist <= acc+SEG_LEN[i] || i===SEG_LEN.length-1){
+        const a=WAYPOINTS[i], b=WAYPOINTS[i+1];
+        const dx=b.x-a.x, dy=b.y-a.y, len=Math.hypot(dx,dy)||1;
+        return {x:dx/len, y:dy/len};
+      }
+      acc+=SEG_LEN[i];
+    }
+    return {x:1,y:0};
+  }
+
   // ============================================================
   // Tower & enemy definitions
   // ============================================================
@@ -1001,41 +1019,143 @@
     drawGate(bctx, WAYPOINTS[0].x+6, WAYPOINTS[0].y, "#2a251d", "#847c62");
     // castle gate marker (right)
     drawCastle(bctx, WAYPOINTS[WAYPOINTS.length-1].x-24, WAYPOINTS[WAYPOINTS.length-1].y);
+
+    // Luz direcional rasante por cima de tudo -- pintada no espaco do mapa
+    // (sem upright), entao gira junto com o tabuleiro em retrato, como um
+    // raio de sol caindo sobre a mesa. "soft-light" clareia sem lavar o
+    // contraste, o oposto de uma sobreposicao lisa translucida.
+    bctx.save();
+    bctx.globalCompositeOperation = "soft-light";
+    const sun = bctx.createLinearGradient(0,0,CANVAS_W*0.65,CANVAS_H*0.95);
+    sun.addColorStop(0, "rgba(255,222,165,0.6)");
+    sun.addColorStop(0.55, "rgba(255,222,165,0)");
+    sun.addColorStop(1, "rgba(10,12,24,0.4)");
+    bctx.fillStyle = sun;
+    bctx.fillRect(0,0,CANVAS_W,CANVAS_H);
+    bctx.restore();
   }
   paintBackground();
 
   function drawGate(c, x, y, fill, edge){
     c.save();
     c.translate(x, y); upright(c);
-    c.fillStyle = fill;
+    const grad = c.createRadialGradient(-3,-4,1, 0,0,21);
+    grad.addColorStop(0, "#000000");
+    grad.addColorStop(1, fill);
+    c.fillStyle = grad;
     c.beginPath();
     c.arc(0, 0, 20, Math.PI*0.5, Math.PI*1.5);
     c.closePath();
     c.fill();
     c.strokeStyle = edge; c.lineWidth = 3; c.stroke();
+    // pedras irregulares emolduram a boca da caverna
+    c.fillStyle = edge;
+    for(let i=0;i<7;i++){
+      const a = Math.PI*0.5 + (i/6)*Math.PI;
+      const r = 19+rnd()*4;
+      c.beginPath(); c.arc(Math.cos(a)*r, Math.sin(a)*r, 2.4+rnd()*2, 0, Math.PI*2); c.fill();
+    }
     c.restore();
   }
 
+  // Muralha com duas torres redondas de telhado conico flanqueando um
+  // portao em arco -- no lugar do bloco retangular unico + porta preta
+  // chapada da versao anterior. Toda a pedra usa um gradiente diagonal
+  // (stoneFill) em vez de fillStyle solido, pra dar volume as faces.
   function drawCastle(c, x, y){
     c.save();
     c.translate(x, y); upright(c);
+
+    const stoneLight = lighten(PALETTE.stone, 24);
+    const stoneDark2 = shade(PALETTE.stoneDark, -14);
+    function stoneFill(x0,y0,x1,y1){
+      const g = c.createLinearGradient(x0,y0,x1,y1);
+      g.addColorStop(0, stoneLight);
+      g.addColorStop(0.55, PALETTE.stone);
+      g.addColorStop(1, PALETTE.stoneDark);
+      return g;
+    }
+    function stoneCourses(x0,x1,y0,y1){
+      c.strokeStyle = "rgba(0,0,0,.16)"; c.lineWidth = 1;
+      for(let ry=y0; ry<y1; ry+=6.5){ c.beginPath(); c.moveTo(x0,ry); c.lineTo(x1,ry); c.stroke(); }
+    }
+
+    // sombra de contato no chao, ancora o conjunto na grama
+    c.fillStyle = "rgba(6,6,4,.38)";
+    c.beginPath(); c.ellipse(9, 40, 48, 9, 0, 0, Math.PI*2); c.fill();
+
+    function tower(tx){
+      c.save();
+      c.translate(tx, 0);
+      c.fillStyle = stoneFill(-9,-40,9,14);
+      c.beginPath();
+      c.moveTo(-9,14); c.lineTo(-9,-30);
+      c.quadraticCurveTo(-9,-37,0,-37); c.quadraticCurveTo(9,-37,9,-30);
+      c.lineTo(9,14); c.closePath(); c.fill();
+      c.strokeStyle = stoneDark2; c.lineWidth = 1.3; c.stroke();
+      c.save(); c.clip();
+      stoneCourses(-9,9,-32,12);
+      c.restore();
+      c.fillStyle = PALETTE.stone;
+      [-7,-1,5].forEach(mx=>c.fillRect(mx,-42,4,6));
+      // telhado conico
+      c.beginPath(); c.moveTo(-11,-37); c.lineTo(0,-60); c.lineTo(11,-37); c.closePath();
+      const roof = c.createLinearGradient(-11,-60,11,-37);
+      roof.addColorStop(0, "#7a352f"); roof.addColorStop(1, "#4a201d");
+      c.fillStyle = roof; c.fill();
+      c.strokeStyle = "#241512"; c.lineWidth = 1; c.stroke();
+      c.fillStyle = "#e0ac57";
+      c.beginPath(); c.arc(0,-60,1.6,0,Math.PI*2); c.fill();
+      c.restore();
+    }
+
+    const gateX=6, gateHalf=6.6, gateTop=-2, gateBot=20;
+
+    // muralha central entre as torres
+    c.fillStyle = stoneFill(-4,-32,28,20);
+    c.beginPath(); c.rect(-4,-26,32,46); c.fill();
+    c.strokeStyle = stoneDark2; c.lineWidth = 1.4; c.strokeRect(-4,-26,32,46);
+    c.save();
+    c.beginPath(); c.rect(-4,-26,32,46); c.clip();
+    stoneCourses(-4,28,-24,18);
+    c.restore();
+    // ameias
     c.fillStyle = PALETTE.stone;
-    c.fillRect(-6, -38, 40, 76);
-    c.fillStyle = PALETTE.stoneDark;
-    for(let i=0;i<4;i++) c.fillRect(-2+i*10, -46, 6, 10);
-    c.fillStyle = "#14110d";
-    c.fillRect(8, -6, 16, 36);
-    c.strokeStyle = PALETTE.stoneDark; c.lineWidth = 2;
-    c.strokeRect(-6, -38, 40, 76);
-    // flag
-    c.strokeStyle = "#5f5847"; c.lineWidth = 2;
-    c.beginPath(); c.moveTo(14, -46); c.lineTo(14, -70); c.stroke();
-    c.fillStyle = "#a6342f";
-    c.beginPath(); c.moveTo(14,-70); c.lineTo(34,-64); c.lineTo(14,-58); c.closePath(); c.fill();
-    // torch mounts flanking the gate (flame + glow drawn per-frame, see drawTorches)
+    for(let mx=-4; mx<26; mx+=8) c.fillRect(mx,-32,5,7);
+
+    tower(-9);
+    tower(29);
+
+    // portao em arco com sombra interna e batentes de ferro
+    c.beginPath();
+    c.moveTo(gateX-gateHalf, gateBot);
+    c.lineTo(gateX-gateHalf, gateTop+gateHalf);
+    c.arc(gateX, gateTop+gateHalf, gateHalf, Math.PI, 0);
+    c.lineTo(gateX+gateHalf, gateBot);
+    c.closePath();
+    const gateGrad = c.createLinearGradient(gateX,gateTop,gateX,gateBot);
+    gateGrad.addColorStop(0,"#0b0906"); gateGrad.addColorStop(1,"#241d15");
+    c.fillStyle = gateGrad; c.fill();
+    c.strokeStyle = stoneDark2; c.lineWidth = 1.6; c.stroke();
+    c.strokeStyle = "rgba(0,0,0,.4)"; c.lineWidth = 1;
+    for(let gx=gateX-4; gx<=gateX+4; gx+=2.6){ c.beginPath(); c.moveTo(gx,gateTop+6); c.lineTo(gx,gateBot); c.stroke(); }
+
+    // bandeirola no topo da torre esquerda
+    c.strokeStyle = "#5f5847"; c.lineWidth = 1.6;
+    c.beginPath(); c.moveTo(-9,-60); c.lineTo(-9,-78); c.stroke();
+    const flag = c.createLinearGradient(-9,-78,7,-71);
+    flag.addColorStop(0, "#d65650"); flag.addColorStop(1, "#8a2924");
+    c.fillStyle = flag;
+    c.beginPath();
+    c.moveTo(-9,-78); c.quadraticCurveTo(-1,-75, 7,-78);
+    c.quadraticCurveTo(0,-71.5, -9,-70); c.closePath(); c.fill();
+
+    // suportes de tocha junto ao portao (a chama e o brilho sao desenhados
+    // por quadro em drawTorches -- so o suporte fisico e assado aqui)
     c.fillStyle = "#2a251d";
-    c.fillRect(-14, -30, 4, 24);
-    c.fillRect(40, -30, 4, 24);
+    c.fillRect(gateX-gateHalf-7,-8,3,20);
+    c.fillRect(gateX+gateHalf+4,-8,3,20);
+
     c.restore();
   }
 
@@ -1097,8 +1217,46 @@
     bctx.stroke();
     bctx.restore();
 
-    // scattered pebbles
-    for(let i=0;i<90;i++){
+    // juntas de laje: contornos de pedra atravessados na pista, em fileiras
+    // alternadas (padrao de tijolo) -- so a junta (contorno + friso claro no
+    // canto), sem preencher nada por cima da cor da estrada ja pintada. Uma
+    // primeira versao preenchia cada bloco com tons claro/escuro alternados
+    // e ficou parecendo tabuleiro de xadrez; contorno sozinho da a textura
+    // de flagstone sem competir com o marrom da estrada.
+    const roadHalfW = TILE*0.78/2;
+    let rowParity = 0;
+    for(let d=4; d<TOTAL_LEN-4; d += 17){
+      const p = pointAtDistance(d);
+      const t = tangentAtDistance(d);
+      const nx=-t.y, ny=t.x, ang=Math.atan2(t.y,t.x);
+      const lane = rowParity%2===0 ? [-0.66,0,0.62] : [-0.9,-0.28,0.32,0.88];
+      rowParity++;
+      lane.forEach(o=>{
+        const ox = o*roadHalfW;
+        if(Math.abs(ox) > roadHalfW-4) return;
+        const bw = 13+rnd()*3, bh = 9+rnd()*2;
+        bctx.save();
+        bctx.translate(p.x+nx*ox+(rnd()-0.5)*2, p.y+ny*ox+(rnd()-0.5)*2);
+        bctx.rotate(ang+(rnd()-0.5)*0.14);
+        bctx.beginPath();
+        if(bctx.roundRect) bctx.roundRect(-bw/2,-bh/2,bw,bh,1.8);
+        else bctx.rect(-bw/2,-bh/2,bw,bh);
+        bctx.strokeStyle = "rgba(35,28,18,0.3)";
+        bctx.lineWidth = 1.1;
+        bctx.stroke();
+        // frisinho claro no canto superior-esquerdo, sugere luz raspando a
+        // borda de cada pedra sem precisar de um preenchimento inteiro
+        bctx.strokeStyle = "rgba(255,240,210,0.08)";
+        bctx.lineWidth = 1;
+        bctx.beginPath();
+        bctx.moveTo(-bw/2+1, bh/2-1); bctx.lineTo(-bw/2+1,-bh/2+1); bctx.lineTo(bw/2-1,-bh/2+1);
+        bctx.stroke();
+        bctx.restore();
+      });
+    }
+
+    // punhado de cascalho solto por cima das lajes
+    for(let i=0;i<70;i++){
       const d = rnd()*TOTAL_LEN;
       const p = pointAtDistance(d);
       const ox=(rnd()-0.5)*TILE*0.6, oy=(rnd()-0.5)*TILE*0.6;
@@ -1163,11 +1321,21 @@
     bctx.scale(scale,scale);
     bctx.fillStyle = "rgba(10,10,6,0.3)";
     bctx.beginPath(); bctx.ellipse(2,4,15,6,0,0,Math.PI*2); bctx.fill();
-    bctx.fillStyle = "#4a3928";
+    const trunk = bctx.createLinearGradient(-3,0,3,0);
+    trunk.addColorStop(0,"#5a4632"); trunk.addColorStop(1,"#362715");
+    bctx.fillStyle = trunk;
     bctx.fillRect(-3,-6,6,14);
+    // cada bolha da copa ganha seu proprio gradiente radial (luz vindo de
+    // cima-esquerda), no lugar do preenchimento solido de antes -- e o que
+    // faz a folhagem parecer volumosa em vez de um circulo colorido chapado
     const canopy = ["#31401f","#3a4a2c","#465a34"];
     [[0,-18,15],[-9,-12,11],[9,-14,12]].forEach((b,i)=>{
-      bctx.fillStyle = canopy[i%canopy.length];
+      const base = canopy[i%canopy.length];
+      const g = bctx.createRadialGradient(b[0]-b[2]*0.35,b[1]-b[2]*0.4,b[2]*0.15, b[0],b[1],b[2]*1.05);
+      g.addColorStop(0, lighten(base,26));
+      g.addColorStop(0.6, base);
+      g.addColorStop(1, shade(base,-22));
+      bctx.fillStyle = g;
       bctx.beginPath(); bctx.arc(b[0],b[1],b[2],0,Math.PI*2); bctx.fill();
     });
     bctx.restore();
@@ -1249,9 +1417,11 @@
   // Visual effects: glow sprites, torches, cloud shadows, particle pool
   // ============================================================
   const castleAnchor = {x: WAYPOINTS[WAYPOINTS.length-1].x-24, y: WAYPOINTS[WAYPOINTS.length-1].y};
+  // alinhados aos suportes de tocha assados em drawCastle (gateX=6,
+  // gateHalf=6.6 -> suportes em gateX-gateHalf-7 e gateX+gateHalf+4)
   const TORCH_POINTS = [
-    {x: castleAnchor.x-12, y: castleAnchor.y-30, seed:0},
-    {x: castleAnchor.x+42, y: castleAnchor.y-30, seed:2.3}
+    {x: castleAnchor.x-5.5, y: castleAnchor.y-8, seed:0},
+    {x: castleAnchor.x+18, y: castleAnchor.y-8, seed:2.3}
   ];
 
   // Pre-rendered radial glow sprites: draw once, `drawImage` many times per
@@ -1450,17 +1620,37 @@
   // contour. The gradient gives each piece volume and the contour keeps the
   // figure readable against the busy terrain -- together they're what
   // separates a drawn character from a flat silhouette.
+  //
+  // The soft drop shadow on the fill is normally too expensive to do every
+  // frame (shadowBlur is the one thing this file's comments explicitly warn
+  // against for anything drawn live) -- but every caller here only ever runs
+  // while baking the enemy sprite sheet once at load, so it's free in
+  // practice, and it's what makes overlapping limbs read as layered instead
+  // of pasted flat on top of each other. The thin light hairline just inside
+  // the dark contour is the cheap half of the same idea: a hint of a polished
+  // edge catching light, without tracing the silhouette a second time.
   function modeled(g, x0,y0,x1,y1, base, outline){
     const grad = g.createLinearGradient(x0,y0,x1,y1);
     grad.addColorStop(0, shade(base, 40));
     grad.addColorStop(0.5, base);
     grad.addColorStop(1, shade(base, -32));
+    g.save();
+    g.shadowColor = "rgba(0,0,0,.4)";
+    g.shadowBlur = 2.4;
+    g.shadowOffsetY = 1.2;
     g.fillStyle = grad;
     g.fill();
+    g.restore();
     if(outline!==false){
       g.strokeStyle = shade(base, -72);
       g.lineWidth = 1;
       g.stroke();
+      g.save();
+      g.globalAlpha = .3;
+      g.strokeStyle = shade(base, 65);
+      g.lineWidth = .6;
+      g.stroke();
+      g.restore();
     }
   }
 
@@ -1941,14 +2131,29 @@
     c.translate(x, y);
     if(c===ctx) upright(c);   // as miniaturas das cartas ja sao desenhadas em pe
     c.translate(0, idle*0.3);
+
+    // gradiente diagonal (luz de cima-esquerda) reaproveitado por todas as
+    // pecas -- so ele ja troca um preenchimento chapado por uma face com
+    // volume, sem custo de shadowBlur (torres sao redesenhadas todo quadro,
+    // nao assadas uma vez como os inimigos).
+    function grad(x0,y0,x1,y1,base){
+      const g = c.createLinearGradient(x0,y0,x1,y1);
+      g.addColorStop(0, lighten(base,26));
+      g.addColorStop(0.55, base);
+      g.addColorStop(1, shade(base,-26));
+      return g;
+    }
+
     // base
-    c.fillStyle = "#2a251d";
+    c.fillStyle = "rgba(8,8,5,.4)";
     c.beginPath(); c.ellipse(0, 16, 17, 7, 0, 0, Math.PI*2); c.fill();
 
     if(key==="archer"){
-      c.fillStyle = "#6b6552";
+      c.fillStyle = grad(-11,-14,11,16,"#7a715a");
       c.fillRect(-11,-14,22,30);
-      c.fillStyle = "#847c62";
+      c.strokeStyle = "rgba(0,0,0,.22)"; c.lineWidth = 1;
+      for(let ry=-9; ry<14; ry+=6){ c.beginPath(); c.moveTo(-11,ry); c.lineTo(11,ry); c.stroke(); }
+      c.fillStyle = grad(-14,-30,14,-14,"#9c9276");
       c.beginPath(); c.moveTo(-14,-14); c.lineTo(0,-30); c.lineTo(14,-14); c.closePath(); c.fill();
       const recoil = fireFlash*6;
       c.save();
@@ -1957,40 +2162,45 @@
       c.fillStyle = t.color;
       c.beginPath(); c.moveTo(0,-4); c.lineTo(14,0); c.lineTo(0,4); c.closePath(); c.fill();
       c.restore();
-      if(level>=2){ c.fillStyle="#e0ac57"; c.fillRect(-3,-8,6,6); }
+      if(level>=2){ c.fillStyle=grad(-3,-8,3,-2,"#f0b95f"); c.fillRect(-3,-8,6,6); }
     } else if(key==="cannon"){
-      c.fillStyle = "#4a453c";
+      c.fillStyle = grad(-14,-6,14,16,"#57503f");
       c.fillRect(-14,-6,28,22);
-      c.fillStyle = "#847c62";
+      c.fillStyle = grad(-16,-10,16,-2,"#9c9276");
       c.fillRect(-16,-10,32,8);
       const kick = -6*fireFlash;
-      c.fillStyle = "#2a251d";
+      c.fillStyle = grad(-6+kick,-22,20+kick,-12,"#3a352b");
       c.fillRect(-6+kick,-22,26,10);
+      c.fillStyle = grad(15+kick,-22,25+kick,-12,"#3a352b");
       c.beginPath(); c.arc(20+kick,-17,5,0,Math.PI*2); c.fill();
-      if(level>=2){ c.strokeStyle="#4f7a66"; c.lineWidth=2; c.strokeRect(-14,-6,28,22); }
+      if(level>=2){ c.strokeStyle="#6fa88d"; c.lineWidth=2; c.strokeRect(-14,-6,28,22); }
     } else if(key==="mage"){
-      c.fillStyle = "#6b6552";
+      c.fillStyle = grad(-10,-18,10,16,"#7a715a");
       c.beginPath(); c.moveTo(-10,16); c.lineTo(-8,-18); c.lineTo(8,-18); c.lineTo(10,16); c.closePath(); c.fill();
       const pulse = Math.sin(animPhase*2.4)*1.5 + fireFlash*5;
-      c.fillStyle = t.color;
+      const orb = c.createRadialGradient(-2,-27,1, 0,-24,9);
+      orb.addColorStop(0, lighten(t.color,55));
+      orb.addColorStop(1, shade(t.color,-18));
+      c.fillStyle = orb;
       c.beginPath(); c.arc(0,-24,8,0,Math.PI*2); c.fill();
       c.globalAlpha = 0.5 + fireFlash*0.3;
+      c.fillStyle = t.color;
       c.beginPath(); c.arc(0,-24, (level>=2?13:10)+pulse, 0, Math.PI*2); c.fill();
       c.globalAlpha = 1;
     } else if(key==="ballista"){
-      c.fillStyle = "#4a3928";
+      c.fillStyle = grad(-12,-4,12,16,"#5a4630");
       c.fillRect(-12,-4,24,20);
-      c.fillStyle = "#6b5535";
+      c.fillStyle = grad(-15,-8,15,-2,"#8a7a58");
       c.fillRect(-15,-8,30,6);
       const draw = fireFlash*4;
-      c.strokeStyle = "#847c62"; c.lineWidth = 3;
+      c.strokeStyle = "#9c9276"; c.lineWidth = 3;
       c.beginPath(); c.moveTo(-16,-10); c.quadraticCurveTo(-20-draw,-18,-14-draw,-24); c.stroke();
       c.beginPath(); c.moveTo(16,-10); c.quadraticCurveTo(20+draw,-18,14+draw,-24); c.stroke();
       c.strokeStyle = "#2a251d"; c.lineWidth = 2;
       c.beginPath(); c.moveTo(0,-16); c.lineTo(0,-2+draw); c.stroke();
       c.fillStyle = t.color;
       c.beginPath(); c.moveTo(0,-18); c.lineTo(-3,-13); c.lineTo(3,-13); c.closePath(); c.fill();
-      if(level>=2){ c.strokeStyle="#e0ac57"; c.lineWidth=2; c.strokeRect(-12,-4,24,20); }
+      if(level>=2){ c.strokeStyle="#f0b95f"; c.lineWidth=2; c.strokeRect(-12,-4,24,20); }
     }
     c.restore();
   }

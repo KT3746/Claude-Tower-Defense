@@ -8,7 +8,7 @@ Todo o histórico abaixo está mesclado na `main`. Se você (uma sessão nova) f
 chamado para continuar este projeto, comece lendo `index.html` inteiro — são
 ~2070 linhas, um único IIFE comentado por seções — e depois volte aqui.
 
-## O que já existe (v1 + v2, incrementos 1 a 4b)
+## O que já existe (v1 + v2, incrementos 1 a 5c)
 
 - **v1**: jogo completo e jogável — grade 18×10, estrada única sinuosa,
   3 torres (Arqueiro/Canhão/Mago), 4 inimigos (Trasgo/Orc/Cavaleiro
@@ -112,6 +112,39 @@ chamado para continuar este projeto, comece lendo `index.html` inteiro — são
     estourando a tela, painel de torre nunca cortado, construir/vender/
     selecionar funcionando pelo mapeamento girado, e 6 ondas em ×2 sem
     nenhum erro de console.
+
+- **Incremento 5a — reforma visual da interface**: emoji (🏰🔊) e glifos
+  unicode soltos (⟲) viraram um sprite de `<symbol>` SVG único, reaproveitado
+  via `<use>` em toda a página (sempre `currentColor`, acompanha a cor do
+  botão/estado). Elevação em duas camadas (`--lift-1`/`--lift-2`: sombra de
+  contato justa + sombra ambiente larga, no lugar de um `box-shadow` chapado
+  único), friso interno de vidro (`--hairline-top/bottom`), grão de filme
+  sutil (SVG `feTurbulence` embutido, sem asset externo) sobre o fundo
+  inteiro. Botões com bisel (sobem 1px no `:active`) e layout ícone+rótulo;
+  cartas de torre com faixa lateral na cor do tipo (`TOWER_ACCENT`, separada
+  da cor do projétil — a do canhão é quase preta). Sidebar de 260→284px pra
+  caber ícone+rótulo sem truncar; nos modos compactos pausa/velocidade viram
+  só-ícone/só-número quando o painel é estreito demais (`is-side`).
+- **Incremento 5b — cenário**: a estrada trocou pebbles soltos por juntas de
+  laje de verdade (`tangentAtDistance()` dá a direção do trecho, a normal
+  espalha as pedras pela largura da via em fileiras alternadas tipo tijolo —
+  só contorno + friso claro no canto, sem preencher, senão fica parecendo
+  tabuleiro de xadrez, o que já aconteceu numa primeira tentativa). Castelo
+  redesenhado: duas torres redondas de telhado cônico flanqueando um portão
+  em arco (era um bloco retangular único com uma porta preta chapada), toda
+  a pedra com gradiente diagonal em vez de `fillStyle` sólido. Luz direcional
+  suave (`soft-light`) por cima de tudo no fim de `paintBackground()`,
+  pintada no espaço do mapa (sem `upright()`) — gira junto com o tabuleiro em
+  retrato, como um raio de sol caindo sobre a mesa física. Copa das árvores
+  com gradiente radial por bolha em vez de cor sólida.
+- **Incremento 5c — torres e inimigos**: `drawTower()` (redesenhada todo
+  quadro, não pode usar `shadowBlur`) ganhou gradientes diagonais por peça
+  via um helper `grad()` local — trocou `fillStyle` sólido sem custo extra.
+  `modeled()` (só roda uma vez, ao assar a folha de sprites dos inimigos)
+  ganhou sombra suave por trás de cada peça (`shadowBlur`, de propósito
+  proibido em qualquer coisa desenhada ao vivo neste arquivo, mas de graça
+  aqui por rodar uma única vez) e uma linha de luz fina por dentro do
+  contorno escuro — o par mais barato da mesma ideia.
 
 ## O que falta (próximos incrementos combinados com o usuário)
 
