@@ -515,10 +515,10 @@
   };
 
   const ENEMY_TYPES = {
-    goblin:{name:"Trasgo", hp:18, speed:62, armor:0, reward:5, dmg:1, color:"#5c7a3e", dark:"#3e5629", radius:11},
-    orc:{name:"Orc", hp:48, speed:44, armor:1, reward:9, dmg:2, color:"#7a6a35", dark:"#584c22", radius:14},
-    knight:{name:"Cavaleiro Renegado", hp:120, speed:34, armor:3, reward:18, dmg:3, color:"#8b8578", dark:"#5f594c", radius:15},
-    warlord:{name:"Chefe de Guerra", hp:420, speed:28, armor:4, reward:60, dmg:6, color:"#7a2020", dark:"#4d1414", radius:21}
+    goblin:{name:"Trasgo", hp:18, speed:62, armor:0, reward:5, dmg:1, color:"#5c7a3e", dark:"#3e5629", radius:11, topOffset:47},
+    orc:{name:"Orc", hp:48, speed:44, armor:1, reward:9, dmg:2, color:"#7a6a35", dark:"#584c22", radius:15, topOffset:61},
+    knight:{name:"Cavaleiro Renegado", hp:120, speed:34, armor:3, reward:18, dmg:3, color:"#8b8578", dark:"#5f594c", radius:16, topOffset:75},
+    warlord:{name:"Chefe de Guerra", hp:420, speed:28, armor:4, reward:60, dmg:6, color:"#7a2020", dark:"#4d1414", radius:24, topOffset:89}
   };
 
   function generateWave(n){
@@ -540,17 +540,20 @@
   // State
   // ============================================================
   let gold, lives, wave, waveInProgress, spawnQueue, spawnTimer, spawnInterval;
-  let towers, enemies, projectiles, pops;
+  let towers, enemies, projectiles;
   let armedType = null;
   let selectedTower = null;
   let paused = false, ended = false, speedMul = 1, muted = false;
   let hoverCell = null;
   let enemyIdSeq = 1;
+  let emberTimer = 0, fogTimer = 0, cloudOffset = 0;
 
   function resetState(){
     gold = START_GOLD; lives = START_LIVES; wave = 0; waveInProgress = false;
     spawnQueue = []; spawnTimer = 0; spawnInterval = 0.65;
-    towers = []; enemies = []; projectiles = []; pops = [];
+    towers = []; enemies = []; projectiles = [];
+    for(const p of particles) p.active = false;
+    emberTimer = 0; fogTimer = 0;
     armedType = null; selectedTower = null; paused = false; ended = false; speedMul = 1;
     hoverCell = null;
     updateHUD();
@@ -576,15 +579,10 @@
   bg.width = CANVAS_W; bg.height = CANVAS_H;
   (function paintBackground(){
     const bctx = bg.getContext("2d");
-    // grass base with deterministic mottling
-    for(let r=0;r<ROWS;r++){
-      for(let c=0;c<COLS;c++){
-        const seed = (c*31 + r*17) % 7;
-        bctx.fillStyle = seed<2 ? PALETTE.grassDark : PALETTE.grass;
-        bctx.fillRect(c*TILE, r*TILE, TILE, TILE);
-      }
-    }
-    // road
+    paintGrassBase(bctx);
+    paintScenery(bctx);
+
+    // road (drawn on top of scenery so it always reads crisp and clean)
     bctx.lineCap = "round"; bctx.lineJoin = "round";
     bctx.strokeStyle = PALETTE.pathEdge;
     bctx.lineWidth = TILE*0.92;
@@ -595,17 +593,9 @@
     bctx.strokeStyle = PALETTE.path;
     bctx.lineWidth = TILE*0.78;
     bctx.stroke();
-    // road mottling
-    bctx.strokeStyle = PALETTE.pathDark;
-    bctx.lineWidth = 2;
-    for(let i=0;i<220;i++){
-      const d = Math.random()*TOTAL_LEN;
-      const p = pointAtDistance(d);
-      bctx.beginPath();
-      bctx.arc(p.x+(Math.random()-0.5)*TILE*0.5, p.y+(Math.random()-0.5)*TILE*0.5, 1.4, 0, Math.PI*2);
-      bctx.fillStyle = PALETTE.pathDark;
-      bctx.fill();
-    }
+
+    paintRoadDetail(bctx);
+
     // spawn cave marker (left)
     drawGate(bctx, WAYPOINTS[0].x+6, WAYPOINTS[0].y, "#2a251d", "#847c62");
     // castle gate marker (right)
@@ -635,15 +625,845 @@
     c.beginPath(); c.moveTo(x+14, y-46); c.lineTo(x+14, y-70); c.stroke();
     c.fillStyle = "#a6342f";
     c.beginPath(); c.moveTo(x+14,y-70); c.lineTo(x+34,y-64); c.lineTo(x+14,y-58); c.closePath(); c.fill();
+    // torch mounts flanking the gate (flame + glow drawn per-frame, see drawTorches)
+    c.fillStyle = "#2a251d";
+    c.fillRect(x-14, y-30, 4, 24);
+    c.fillRect(x+40, y-30, 4, 24);
+  }
+
+  // ============================================================
+  // Landscape detail (all baked once into `bg` -- no per-frame cost):
+  // organic grass, road wear, and scenery (trees/rocks/tufts/pond)
+  // scattered off the path.
+  // ============================================================
+  function paintGrassBase(bctx){
+    const lg = bctx.createLinearGradient(0,0,CANVAS_W,CANVAS_H);
+    lg.addColorStop(0, "#44562f");
+    lg.addColorStop(1, "#28351a");
+    bctx.fillStyle = lg;
+    bctx.fillRect(0,0,CANVAS_W,CANVAS_H);
+
+    // organic color blotches replace the old uniform checker tiling
+    const blotches = ["#3a4a2c","#465a34","#31401f","#4f6339"];
+    for(let i=0;i<150;i++){
+      const x = Math.random()*CANVAS_W, y = Math.random()*CANVAS_H;
+      const r = 26+Math.random()*64;
+      const col = blotches[(Math.random()*blotches.length)|0];
+      const grad = bctx.createRadialGradient(x,y,0,x,y,r);
+      grad.addColorStop(0, col+"33");
+      grad.addColorStop(1, col+"00");
+      bctx.fillStyle = grad;
+      bctx.beginPath(); bctx.arc(x,y,r,0,Math.PI*2); bctx.fill();
+    }
+
+    // fine grass-blade speckle for close-up texture
+    bctx.globalAlpha = 0.35;
+    bctx.lineWidth = 1;
+    for(let i=0;i<900;i++){
+      const x = Math.random()*CANVAS_W, y = Math.random()*CANVAS_H;
+      bctx.strokeStyle = Math.random()<0.5 ? "#586f3c" : "#223014";
+      bctx.beginPath();
+      bctx.moveTo(x,y);
+      bctx.lineTo(x+(Math.random()-0.5)*4, y-3-Math.random()*3);
+      bctx.stroke();
+    }
+    bctx.globalAlpha = 1;
+
+    // soft vignette for depth
+    const vg = bctx.createRadialGradient(CANVAS_W/2,CANVAS_H/2,CANVAS_H*0.35, CANVAS_W/2,CANVAS_H/2,CANVAS_H*0.92);
+    vg.addColorStop(0,"rgba(0,0,0,0)");
+    vg.addColorStop(1,"rgba(0,0,0,0.35)");
+    bctx.fillStyle = vg;
+    bctx.fillRect(0,0,CANVAS_W,CANVAS_H);
+  }
+
+  function paintRoadDetail(bctx){
+    // subtle worn center streak
+    bctx.save();
+    bctx.strokeStyle = "rgba(122,104,74,0.35)";
+    bctx.lineWidth = TILE*0.22;
+    bctx.lineCap = "round"; bctx.lineJoin = "round";
+    bctx.beginPath();
+    bctx.moveTo(WAYPOINTS[0].x, WAYPOINTS[0].y);
+    for(let i=1;i<WAYPOINTS.length;i++) bctx.lineTo(WAYPOINTS[i].x, WAYPOINTS[i].y);
+    bctx.stroke();
+    bctx.restore();
+
+    // scattered pebbles
+    for(let i=0;i<90;i++){
+      const d = Math.random()*TOTAL_LEN;
+      const p = pointAtDistance(d);
+      const ox=(Math.random()-0.5)*TILE*0.6, oy=(Math.random()-0.5)*TILE*0.6;
+      const r = 1+Math.random()*2.2;
+      bctx.fillStyle = Math.random()<0.5 ? PALETTE.stone : PALETTE.stoneDark;
+      bctx.beginPath(); bctx.arc(p.x+ox,p.y+oy,r,0,Math.PI*2); bctx.fill();
+    }
+
+    // hairline cracks
+    bctx.strokeStyle = "rgba(42,37,29,0.5)";
+    bctx.lineWidth = 1;
+    for(let i=0;i<18;i++){
+      const d = Math.random()*TOTAL_LEN;
+      const p = pointAtDistance(d);
+      let cx=p.x+(Math.random()-0.5)*TILE*0.5, cy=p.y+(Math.random()-0.5)*TILE*0.5;
+      bctx.beginPath();
+      bctx.moveTo(cx,cy);
+      for(let k=0;k<3;k++){
+        cx += (Math.random()-0.5)*8; cy += (Math.random()-0.5)*8;
+        bctx.lineTo(cx,cy);
+      }
+      bctx.stroke();
+    }
+
+    // overgrown edge tufts nibbling into the dirt
+    for(let i=0;i<70;i++){
+      const d = Math.random()*TOTAL_LEN;
+      const p = pointAtDistance(d);
+      const ang = Math.random()*Math.PI*2;
+      const edge = TILE*0.42;
+      const x = p.x+Math.cos(ang)*edge, y=p.y+Math.sin(ang)*edge;
+      bctx.strokeStyle = "#3e5629";
+      bctx.lineWidth = 1.3;
+      bctx.beginPath();
+      bctx.moveTo(x,y);
+      bctx.lineTo(x+(Math.random()-0.5)*3, y-3-Math.random()*3);
+      bctx.stroke();
+    }
+  }
+
+  // Picks up to `count` distinct non-path grid cells, skipping any within
+  // `radius` tiles of an `avoid` point (used to keep the spawn cave and
+  // castle gate clear of decoration).
+  function pickFreeCells(count, avoid){
+    avoid = avoid||[];
+    const list = [];
+    let guard = 0;
+    while(list.length<count && guard<count*25){
+      guard++;
+      const c = Math.floor(Math.random()*COLS), r = Math.floor(Math.random()*ROWS);
+      if(isPathCell(c,r)) continue;
+      if(list.some(p=>p.c===c&&p.r===r)) continue;
+      if(avoid.some(a=>Math.hypot(a.c-c,a.r-r)<a.radius)) continue;
+      list.push({c,r});
+    }
+    return list;
+  }
+
+  function paintTree(bctx,x,y,scale){
+    bctx.save();
+    bctx.translate(x,y);
+    bctx.scale(scale,scale);
+    bctx.fillStyle = "rgba(10,10,6,0.3)";
+    bctx.beginPath(); bctx.ellipse(2,4,15,6,0,0,Math.PI*2); bctx.fill();
+    bctx.fillStyle = "#4a3928";
+    bctx.fillRect(-3,-6,6,14);
+    const canopy = ["#31401f","#3a4a2c","#465a34"];
+    [[0,-18,15],[-9,-12,11],[9,-14,12]].forEach((b,i)=>{
+      bctx.fillStyle = canopy[i%canopy.length];
+      bctx.beginPath(); bctx.arc(b[0],b[1],b[2],0,Math.PI*2); bctx.fill();
+    });
+    bctx.restore();
+  }
+
+  function paintRock(bctx,x,y,scale){
+    bctx.save();
+    bctx.translate(x,y); bctx.scale(scale,scale);
+    bctx.fillStyle = "rgba(10,10,6,0.25)";
+    bctx.beginPath(); bctx.ellipse(2,5,12,5,0,0,Math.PI*2); bctx.fill();
+    const grad = bctx.createLinearGradient(-10,-10,10,8);
+    grad.addColorStop(0, lighten(PALETTE.stone,20));
+    grad.addColorStop(1, PALETTE.stoneDark);
+    bctx.fillStyle = grad;
+    bctx.beginPath();
+    bctx.moveTo(-11,4); bctx.lineTo(-8,-8); bctx.lineTo(3,-11); bctx.lineTo(11,-2); bctx.lineTo(9,6); bctx.lineTo(-4,8); bctx.closePath();
+    bctx.fill();
+    bctx.restore();
+  }
+
+  function paintTuft(bctx,x,y,scale){
+    bctx.save();
+    bctx.translate(x,y); bctx.scale(scale,scale);
+    bctx.strokeStyle = "#546b38"; bctx.lineWidth = 1.4; bctx.lineCap = "round";
+    for(let i=0;i<5;i++){
+      const a = (i-2)*0.35;
+      bctx.beginPath();
+      bctx.moveTo(0,4);
+      bctx.quadraticCurveTo(Math.sin(a)*4, -4, Math.sin(a)*7, -10-Math.random()*3);
+      bctx.stroke();
+    }
+    bctx.restore();
+  }
+
+  function paintPond(bctx,x,y,rw,rh){
+    bctx.save();
+    bctx.translate(x,y);
+    bctx.fillStyle = "rgba(10,10,6,0.25)";
+    bctx.beginPath(); bctx.ellipse(3,5,rw+4,rh+3,0,0,Math.PI*2); bctx.fill();
+    const grad = bctx.createLinearGradient(-rw,-rh,rw,rh);
+    grad.addColorStop(0,"#3d5a5c"); grad.addColorStop(1,"#24393b");
+    bctx.fillStyle = grad;
+    bctx.beginPath(); bctx.ellipse(0,0,rw,rh,0,0,Math.PI*2); bctx.fill();
+    bctx.strokeStyle = "#1c2c2d"; bctx.lineWidth = 2; bctx.stroke();
+    bctx.strokeStyle = "rgba(210,225,215,0.35)"; bctx.lineWidth = 2;
+    bctx.beginPath(); bctx.ellipse(-rw*0.2,-rh*0.3,rw*0.4,rh*0.18,0.3,0,Math.PI*1.2); bctx.stroke();
+    for(let i=0;i<5;i++) paintTuft(bctx, -rw*0.7+i*(rw*0.35), rh*0.7, 0.8);
+    bctx.restore();
+  }
+
+  function paintScenery(bctx){
+    const avoid = [
+      {c:0,r:2,radius:2.2}, {c:17,r:8,radius:2.2}
+    ];
+    // small tree clusters, concentrated rather than uniformly scattered,
+    // so they read as forest edges instead of clutter in the play area
+    pickFreeCells(6, avoid).forEach(seed=>{
+      const n = 2+Math.floor(Math.random()*3);
+      for(let i=0;i<n;i++){
+        const x = seed.c*TILE+TILE/2+(Math.random()-0.5)*TILE*1.6;
+        const y = seed.r*TILE+TILE/2+(Math.random()-0.5)*TILE*1.6;
+        paintTree(bctx, x, y, 0.85+Math.random()*0.4);
+      }
+    });
+    // rocks
+    pickFreeCells(8, avoid).forEach(p=>{
+      paintRock(bctx, p.c*TILE+TILE/2+(Math.random()-0.5)*16, p.r*TILE+TILE/2+(Math.random()-0.5)*16, 0.8+Math.random()*0.5);
+    });
+    // tall-grass tufts for close-up variety
+    pickFreeCells(26, avoid).forEach(p=>{
+      paintTuft(bctx, p.c*TILE+TILE/2+(Math.random()-0.5)*24, p.r*TILE+TILE/2+(Math.random()-0.5)*24, 0.8+Math.random()*0.6);
+    });
+    // one small pond tucked in a free corner
+    const pondSpot = pickFreeCells(1, avoid)[0];
+    if(pondSpot) paintPond(bctx, pondSpot.c*TILE+TILE/2, pondSpot.r*TILE+TILE/2, 26, 16);
+  }
+
+  // ============================================================
+  // Visual effects: glow sprites, torches, cloud shadows, particle pool
+  // ============================================================
+  const castleAnchor = {x: WAYPOINTS[WAYPOINTS.length-1].x-24, y: WAYPOINTS[WAYPOINTS.length-1].y};
+  const TORCH_POINTS = [
+    {x: castleAnchor.x-12, y: castleAnchor.y-30, seed:0},
+    {x: castleAnchor.x+42, y: castleAnchor.y-30, seed:2.3}
+  ];
+
+  // Pre-rendered radial glow sprites: draw once, `drawImage` many times per
+  // frame instead of using ctx.shadowBlur (expensive, especially on mobile).
+  function makeGlow(r,g,b,size){
+    const c = document.createElement("canvas");
+    c.width = c.height = size;
+    const gctx = c.getContext("2d");
+    const grad = gctx.createRadialGradient(size/2,size/2,0, size/2,size/2,size/2);
+    grad.addColorStop(0, "rgba("+r+","+g+","+b+",0.9)");
+    grad.addColorStop(0.4, "rgba("+r+","+g+","+b+",0.35)");
+    grad.addColorStop(1, "rgba("+r+","+g+","+b+",0)");
+    gctx.fillStyle = grad;
+    gctx.fillRect(0,0,size,size);
+    return c;
+  }
+  const GLOW_AMBER = makeGlow(224,172,87,64);
+  const GLOW_GREEN = makeGlow(111,168,141,64);
+  const GLOW_FOG = makeGlow(178,171,150,160);
+
+  function drawGlow(sprite, x, y, radius, alpha){
+    if(alpha<=0 || radius<=0) return;
+    const s = radius*2;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.globalCompositeOperation = "lighter";
+    ctx.drawImage(sprite, x-radius, y-radius, s, s);
+    ctx.restore();
+  }
+
+  function drawTorches(){
+    for(const tp of TORCH_POINTS){
+      const flicker = 0.75 + 0.2*Math.sin(now*9+tp.seed) + 0.12*Math.sin(now*23+tp.seed*3);
+      drawGlow(GLOW_AMBER, tp.x, tp.y-4, 20*flicker, 0.5*flicker);
+      ctx.save();
+      ctx.translate(tp.x, tp.y);
+      ctx.fillStyle = "#e0ac57";
+      ctx.beginPath();
+      ctx.moveTo(0,6);
+      ctx.quadraticCurveTo(4*flicker,-2, 0,-9*flicker);
+      ctx.quadraticCurveTo(-4*flicker,-2, 0,6);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  // Cloud-shadow layer: a handful of soft dark blobs baked once, drifted
+  // horizontally with wraparound each frame via a cheap "multiply" composite
+  // over the (already-baked) terrain — no per-frame terrain redraw.
+  const cloudLayer = document.createElement("canvas");
+  cloudLayer.width = CANVAS_W; cloudLayer.height = CANVAS_H;
+  (function paintClouds(){
+    const cc = cloudLayer.getContext("2d");
+    function blob(x,y,r){
+      const grad = cc.createRadialGradient(x,y,0,x,y,r);
+      grad.addColorStop(0,"rgba(20,17,13,0.5)");
+      grad.addColorStop(1,"rgba(20,17,13,0)");
+      cc.fillStyle = grad;
+      cc.beginPath(); cc.arc(x,y,r,0,Math.PI*2); cc.fill();
+    }
+    const spots = [
+      {x:120,y:90,r:170},{x:520,y:60,r:140},{x:760,y:220,r:190},
+      {x:300,y:340,r:150},{x:60,y:400,r:130}
+    ];
+    for(const s of spots){
+      blob(s.x, s.y, s.r);
+      if(s.x < 200) blob(s.x+CANVAS_W, s.y, s.r);
+      if(s.x > CANVAS_W-200) blob(s.x-CANVAS_W, s.y, s.r);
+    }
+  })();
+
+  // Fixed-capacity particle pool (hit sparks, death bursts, muzzle flashes,
+  // floating damage numbers, ambient embers/fog). Never grows past
+  // MAX_PARTICLES; a spawn request is silently dropped once it's full, which
+  // guarantees a hard per-frame cost ceiling no matter how chaotic a wave gets.
+  const MAX_PARTICLES = 200;
+  const particles = [];
+  for(let i=0;i<MAX_PARTICLES;i++) particles.push({active:false});
+
+  function spawnParticle(type, x, y, opts){
+    let slot = null;
+    for(let i=0;i<particles.length;i++){ if(!particles[i].active){ slot = particles[i]; break; } }
+    if(!slot) return;
+    slot.active = true; slot.type = type; slot.x = x; slot.y = y; slot.t = 0;
+    slot.vx = 0; slot.vy = 0; slot.size = 4; slot.life = 0.4;
+    slot.color = "#ece3cf"; slot.layer = "front"; slot.growTo = slot.size;
+    slot.alpha = 1; slot.text = ""; slot.glow = GLOW_AMBER;
+    Object.assign(slot, opts);
+  }
+
+  function updateParticles(dt){
+    for(const p of particles){
+      if(!p.active) continue;
+      p.t += dt;
+      if(p.t >= p.life){ p.active = false; continue; }
+      if(p.type==="spark"){
+        p.x += p.vx*dt; p.y += p.vy*dt; p.vy += 260*dt;
+      } else if(p.type==="ember"){
+        p.x += p.vx*dt; p.y += p.vy*dt;
+      } else if(p.type==="fog"){
+        p.x += p.vx*dt;
+      } else if(p.type==="dmgtext"){
+        p.y += p.vy*dt; p.vy *= 0.9;
+      }
+    }
+  }
+
+  function drawParticles(layer){
+    for(const p of particles){
+      if(!p.active || p.layer!==layer) continue;
+      const lr = p.t/p.life;
+      if(p.type==="ring"){
+        const r = p.size + (p.growTo-p.size)*lr;
+        ctx.globalAlpha = 1-lr;
+        ctx.strokeStyle = p.color; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(p.x,p.y,r,0,Math.PI*2); ctx.stroke();
+        ctx.globalAlpha = 1;
+      } else if(p.type==="spark"){
+        ctx.globalAlpha = Math.max(0,1-lr);
+        ctx.fillStyle = p.color;
+        ctx.beginPath(); ctx.arc(p.x,p.y,p.size,0,Math.PI*2); ctx.fill();
+        ctx.globalAlpha = 1;
+      } else if(p.type==="muzzle"){
+        drawGlow(p.glow, p.x, p.y, p.size*(1-lr*0.3), 0.8*(1-lr));
+      } else if(p.type==="dmgtext"){
+        ctx.globalAlpha = Math.max(0,1-lr);
+        ctx.fillStyle = p.color;
+        ctx.font = "700 12px Archivo, sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(p.text, p.x, p.y);
+        ctx.globalAlpha = 1;
+      } else if(p.type==="ember"){
+        const env = Math.min(1,lr*3) * Math.max(0,1-lr);
+        drawGlow(GLOW_AMBER, p.x, p.y, p.size*3, 0.5*env);
+        ctx.globalAlpha = env;
+        ctx.fillStyle = "#e0ac57";
+        ctx.beginPath(); ctx.arc(p.x,p.y,p.size,0,Math.PI*2); ctx.fill();
+        ctx.globalAlpha = 1;
+      } else if(p.type==="fog"){
+        const env = Math.min(1,lr*3) * Math.min(1,(1-lr)*3);
+        ctx.save();
+        ctx.globalAlpha = p.alpha*env;
+        ctx.drawImage(GLOW_FOG, p.x-p.size, p.y-p.size, p.size*2, p.size*2);
+        ctx.restore();
+      }
+    }
+  }
+
+  function spawnAmbient(dt){
+    emberTimer -= dt;
+    if(emberTimer<=0){
+      emberTimer = 0.6 + Math.random()*0.5;
+      spawnParticle("ember", Math.random()*CANVAS_W, CANVAS_H+6, {
+        vx:(Math.random()-0.5)*6, vy:-(14+Math.random()*10),
+        life:5+Math.random()*2.5, size:1.4+Math.random()*1.3, layer:"back"
+      });
+    }
+    fogTimer -= dt;
+    if(fogTimer<=0){
+      fogTimer = 5 + Math.random()*3;
+      spawnParticle("fog", -60, 60+Math.random()*300, {
+        vx:7+Math.random()*5, life:12+Math.random()*6,
+        size:90+Math.random()*40, alpha:0.06+Math.random()*0.04, layer:"back"
+      });
+    }
+  }
+
+  // ============================================================
+  // Enemy character sprites: procedurally painted once at load (a small
+  // walk-cycle sheet per type), then just drawImage'd at runtime. This is
+  // cheaper than redrawing limbs live every frame, and lets us afford much
+  // more detail (gradients, weapons, silhouettes) with zero per-frame cost
+  // and no external image files.
+  // ============================================================
+  const ENEMY_FRAME_W = 64, ENEMY_FRAME_H = 100, ENEMY_FRAMES = 6;
+  const ENEMY_ANCHOR_X = ENEMY_FRAME_W/2, ENEMY_ANCHOR_Y = ENEMY_FRAME_H-8;
+  const ENEMY_DRAW_SCALE = 0.88;
+
+  function clampByte(v){ return v<0?0:v>255?255:v; }
+  function shade(hex, amt){
+    const n = parseInt(hex.slice(1),16);
+    return "rgb("+clampByte((n>>16)+amt)+","+clampByte(((n>>8)&255)+amt)+","+clampByte((n&255)+amt)+")";
+  }
+  function lighten(hex, amt){ return shade(hex, amt); }
+
+  // Fills the current path with a light-from-upper-left gradient plus a dark
+  // contour. The gradient gives each piece volume and the contour keeps the
+  // figure readable against the busy terrain -- together they're what
+  // separates a drawn character from a flat silhouette.
+  function modeled(g, x0,y0,x1,y1, base, outline){
+    const grad = g.createLinearGradient(x0,y0,x1,y1);
+    grad.addColorStop(0, shade(base, 40));
+    grad.addColorStop(0.5, base);
+    grad.addColorStop(1, shade(base, -32));
+    g.fillStyle = grad;
+    g.fill();
+    if(outline!==false){
+      g.strokeStyle = shade(base, -72);
+      g.lineWidth = 1;
+      g.stroke();
+    }
+  }
+
+  function groundShadow(g, rw, rh){
+    g.save();
+    g.fillStyle = "rgba(8,10,6,0.42)";
+    g.beginPath(); g.ellipse(1.5, 0, rw, rh, 0, 0, Math.PI*2); g.fill();
+    g.restore();
+  }
+
+  // A tapered segment running downward from the current origin: wider at the
+  // top (joint) than the bottom, which is what makes a limb read as a limb
+  // rather than a stick.
+  function segment(g, len, wTop, wBot, color){
+    g.beginPath();
+    g.moveTo(-wTop/2, 0);
+    g.lineTo(wTop/2, 0);
+    g.lineTo(wBot/2, len);
+    g.lineTo(-wBot/2, len);
+    g.closePath();
+    modeled(g, -wTop/2, 0, wTop/2, len, color);
+  }
+
+  // Two-segment leg with a knee. The shin lags behind the thigh, so the
+  // stride bends instead of swinging open like a compass -- the single
+  // biggest difference between a walking figure and a pair of sticks.
+  function leg(g, hipX, hipY, thigh, shin, width, swing, color, bootColor){
+    const knee = Math.max(0, -swing)*1.15 + 0.1;
+    g.save();
+    g.translate(hipX, hipY);
+    g.rotate(swing);
+    segment(g, thigh, width, width*0.84, color);
+    g.translate(0, thigh);
+    g.rotate(knee);
+    segment(g, shin, width*0.84, width*0.6, shade(color,-10));
+    g.translate(0, shin);
+    g.rotate(-swing-knee); // foot stays flat to the ground
+    g.beginPath();
+    g.moveTo(-width*0.4,-0.5);
+    g.lineTo(width*0.4,-0.5);
+    g.lineTo(width*0.75, 3);
+    g.lineTo(-width*0.5, 3);
+    g.closePath();
+    modeled(g, -width*0.5,-0.5, width*0.75,3, bootColor);
+    g.restore();
+  }
+
+  // Two-segment arm with an elbow; `atEnd` runs positioned at the hand.
+  function arm(g, shX, shY, upper, fore, width, swing, color, atEnd){
+    const elbow = Math.max(0, swing)*0.8 + 0.15;
+    g.save();
+    g.translate(shX, shY);
+    g.rotate(swing);
+    segment(g, upper, width, width*0.85, color);
+    g.translate(0, upper);
+    g.rotate(elbow);
+    segment(g, fore, width*0.85, width*0.68, color);
+    g.translate(0, fore);
+    if(atEnd) atEnd(g);
+    g.restore();
+  }
+
+  function paintGoblinFrame(g, phase, color, dark){
+    const sw = Math.sin(phase);
+    const legSwing = sw*0.3, armSwing = -sw*0.34;
+    const bob = Math.abs(sw)*1.5;
+    const skin = color, skinBack = shade(color,-20);
+    const cloth = "#6b5535", boot = "#41331e";
+
+    groundShadow(g, 11, 4);
+    g.save();
+    g.translate(0,-bob);
+    g.rotate(0.07); // goblins scurry hunched forward
+
+    // back leg + back arm first, in shadow tones
+    leg(g, -2.6,-18, 9, 9, 5.4, legSwing, skinBack, shade(boot,-14));
+    arm(g, -5,-31, 7, 7, 4.2, armSwing+0.3, skinBack);
+
+    // torso: narrow chest, hunched shoulders
+    g.beginPath();
+    g.moveTo(-6.2,-17);
+    g.quadraticCurveTo(-7.6,-25, -5.4,-31.5);
+    g.lineTo(5.4,-31.5);
+    g.quadraticCurveTo(7.6,-25, 6.2,-17);
+    g.closePath();
+    modeled(g, -7,-31.5, 7,-17, skin);
+    // loincloth
+    g.beginPath();
+    g.moveTo(-6.6,-19.5); g.lineTo(6.6,-19.5); g.lineTo(4.6,-12); g.lineTo(-4.6,-12); g.closePath();
+    modeled(g, -6.6,-19.5, 6.6,-12, cloth);
+
+    leg(g, 2.6,-18, 9, 9, 5.4, -legSwing, skin, boot);
+
+    // head with pointed ears
+    g.beginPath();
+    g.moveTo(-4.6,-37); g.quadraticCurveTo(-11.5,-40.5, -13,-45);
+    g.quadraticCurveTo(-7.6,-40.5, -4.2,-34); g.closePath();
+    modeled(g, -13,-45, -4.2,-34, shade(skin,-16));
+    g.beginPath();
+    g.moveTo(4.6,-37); g.quadraticCurveTo(11.5,-40.5, 13,-45);
+    g.quadraticCurveTo(7.6,-40.5, 4.2,-34); g.closePath();
+    modeled(g, 4.2,-45, 13,-34, shade(skin,-16));
+    g.beginPath();
+    g.ellipse(0.3,-35.6, 6, 5.8, 0, 0, Math.PI*2);
+    modeled(g, -5.7,-41.4, 6.3,-29.8, skin);
+    g.fillStyle = shade(skin,-55);
+    g.beginPath(); g.ellipse(0.3,-38.2, 4.8, 1.5, 0, 0, Math.PI*2); g.fill();
+    g.fillStyle = "#f5d968";
+    g.beginPath(); g.ellipse(-2,-35.8, 1.4, 1, -0.25, 0, Math.PI*2); g.fill();
+    g.beginPath(); g.ellipse(2.6,-35.8, 1.4, 1, 0.25, 0, Math.PI*2); g.fill();
+
+    // front arm with dagger, drawn last so it reads clearly
+    arm(g, 5,-31, 7, 7, 4.2, -armSwing-0.1, skin, (g2)=>{
+      g2.beginPath(); g2.rect(-1.1,-1, 2.2, 3.4);
+      modeled(g2, -1.1,-1, 1.1,2.4, "#4a3928", false);
+      g2.beginPath();
+      g2.moveTo(-0.5,-1);
+      g2.quadraticCurveTo(4.2,-5.5, 2.4,-11.5);
+      g2.quadraticCurveTo(0.7,-6, -1.5,-1);
+      g2.closePath();
+      modeled(g2, -1.5,-11.5, 2.8,-1, "#b3bac2");
+    });
+    g.restore();
+  }
+
+  function paintOrcFrame(g, phase, color, dark){
+    const sw = Math.sin(phase);
+    const legSwing = sw*0.26, armSwing = -sw*0.26;
+    const bob = Math.abs(sw)*1.4;
+    const skin = color, skinBack = shade(color,-19);
+    const leather = "#5a4327", metal = "#8d8574", boot = "#3a2c19";
+
+    groundShadow(g, 14, 5);
+    g.save();
+    g.translate(0,-bob);
+
+    leg(g, -4,-24, 12, 12, 7.4, legSwing, skinBack, shade(boot,-12));
+    arm(g, -9.4,-41, 9, 9, 5.6, armSwing+0.2, skinBack);
+
+    // barrel chest tapering to the waist
+    g.beginPath();
+    g.moveTo(-9.4,-23);
+    g.quadraticCurveTo(-12.4,-33, -10.4,-42);
+    g.lineTo(10.4,-42);
+    g.quadraticCurveTo(12.4,-33, 9.4,-23);
+    g.closePath();
+    modeled(g, -12.4,-42, 12.4,-23, skin);
+    // belt
+    g.beginPath(); g.rect(-9.8,-27, 19.6, 4.4);
+    modeled(g, -9.8,-27, 9.8,-22.6, leather);
+    g.beginPath(); g.rect(-2.2,-26.6, 4.4, 3.6);
+    modeled(g, -2.2,-26.6, 2.2,-23, metal, false);
+
+    leg(g, 4,-24, 12, 12, 7.4, -legSwing, skin, boot);
+
+    // pauldrons: pushed out to the sides and kept low, so they frame the
+    // shoulders instead of crowding the head
+    [[-11.6,-40,-1],[11.6,-40,1]].forEach(p=>{
+      g.beginPath();
+      g.ellipse(p[0],p[1], 6.2, 4, p[2]*0.28, 0, Math.PI*2);
+      modeled(g, p[0]-6.2,p[1]-4, p[0]+6.2,p[1]+4, leather);
+      g.fillStyle = shade(metal,12);
+      for(let k=-1;k<=1;k++){
+        g.beginPath(); g.arc(p[0]+k*3, p[1]-0.4, 0.8, 0, Math.PI*2); g.fill();
+      }
+    });
+
+    // thick neck bridging torso and head
+    g.beginPath(); g.rect(-3.2,-47, 6.4, 6);
+    modeled(g, -3.2,-47, 3.2,-41, shade(skin,-14));
+
+    // heavy head with underbite tusks
+    g.beginPath();
+    g.ellipse(0,-52.5, 7.2, 6.6, 0, 0, Math.PI*2);
+    modeled(g, -7.2,-59.1, 7.2,-45.9, shade(skin,6));
+    g.fillStyle = shade(skin,-46);
+    g.beginPath(); g.ellipse(0,-55.4, 5.6, 1.6, 0, 0, Math.PI*2); g.fill();
+    g.fillStyle = "#d4472f";
+    g.beginPath(); g.ellipse(-2.6,-54.2, 1.25, 0.95, 0, 0, Math.PI*2); g.fill();
+    g.beginPath(); g.ellipse(2.6,-54.2, 1.25, 0.95, 0, 0, Math.PI*2); g.fill();
+    // jaw line, with the tusks jutting up from it
+    g.fillStyle = shade(skin,-24);
+    g.beginPath(); g.ellipse(0,-48.4, 5.2, 2.6, 0, 0, Math.PI*2); g.fill();
+    g.fillStyle = "#efe8d4"; g.strokeStyle = "#9b937f"; g.lineWidth = 0.5;
+    g.beginPath(); g.moveTo(-3.4,-47.6); g.quadraticCurveTo(-4.6,-50.6, -2.2,-51.8);
+    g.quadraticCurveTo(-2.8,-49.4, -2,-47.4); g.closePath(); g.fill(); g.stroke();
+    g.beginPath(); g.moveTo(3.4,-47.6); g.quadraticCurveTo(4.6,-50.6, 2.2,-51.8);
+    g.quadraticCurveTo(2.8,-49.4, 2,-47.4); g.closePath(); g.fill(); g.stroke();
+
+    // axe arm in front
+    arm(g, 9.4,-41, 9, 9, 5.6, -armSwing-0.12, skin, (g2)=>{
+      g2.beginPath(); g2.rect(-1.4,-4, 2.8, 14);
+      modeled(g2, -1.4,-4, 1.4,10, "#5a4327", false);
+      g2.beginPath();
+      g2.moveTo(1.2,-2.5);
+      g2.quadraticCurveTo(9.6,-1.5, 10.4,5.5);
+      g2.quadraticCurveTo(5,3, 1.2,4.5);
+      g2.closePath();
+      modeled(g2, 1.2,-2.5, 10.4,5.5, metal);
+    });
+    g.restore();
+  }
+
+  function paintKnightFrame(g, phase, color, dark){
+    const sw = Math.sin(phase);
+    const legSwing = sw*0.22, armSwing = -sw*0.2;
+    const bob = Math.abs(sw)*1.1;
+    const plate = shade(color,18), plateBack = shade(color,-6);
+    const trim = "#4a443c", crest = "#a6342f";
+
+    groundShadow(g, 13, 4.6);
+    g.save();
+    g.translate(0,-bob);
+
+    leg(g, -4.2,-28, 14, 14, 6.8, legSwing, plateBack, shade(trim,-14));
+    arm(g, -9.6,-47, 10, 10, 5.4, armSwing+0.18, plateBack);
+
+    // fauld over the hips
+    g.beginPath();
+    g.moveTo(-9.4,-31); g.lineTo(9.4,-31); g.lineTo(7.8,-22); g.lineTo(-7.8,-22); g.closePath();
+    modeled(g, -9.4,-31, 9.4,-22, shade(plate,-14));
+
+    // breastplate
+    g.beginPath();
+    g.moveTo(-8.6,-30);
+    g.quadraticCurveTo(-10.6,-40, -8.8,-48);
+    g.lineTo(8.8,-48);
+    g.quadraticCurveTo(10.6,-40, 8.6,-30);
+    g.closePath();
+    modeled(g, -10.6,-48, 10.6,-30, plate);
+    g.strokeStyle = "rgba(255,255,255,0.25)"; g.lineWidth = 1.4;
+    g.beginPath(); g.moveTo(0,-46.5); g.lineTo(0,-32); g.stroke();
+
+    leg(g, 4.2,-28, 14, 14, 6.8, -legSwing, plate, trim);
+
+    // shield arm, held steady on the back/off-hand side
+    g.save();
+    g.translate(-9.6,-47); g.rotate(armSwing*0.3+0.1);
+    g.beginPath();
+    g.moveTo(-5.4,2); g.lineTo(5.4,2); g.lineTo(5.4,12); g.quadraticCurveTo(0,18.4, -5.4,12); g.closePath();
+    modeled(g, -5.4,2, 5.4,18.4, trim);
+    g.beginPath();
+    g.moveTo(0,5.2); g.lineTo(3,8.2); g.lineTo(0,13.4); g.lineTo(-3,8.2); g.closePath();
+    modeled(g, -3,5.2, 3,13.4, crest, false);
+    g.restore();
+
+    // pauldrons
+    [[-9.6,-47.5,-0.32],[9.6,-47.5,0.32]].forEach(p=>{
+      g.beginPath();
+      g.ellipse(p[0],p[1], 5.4, 4, p[2], 0, Math.PI*2);
+      modeled(g, p[0]-5.4,p[1]-4, p[0]+5.4,p[1]+4, shade(plate,6));
+    });
+
+    // great helm: visor slit, breathing holes, crest
+    g.beginPath();
+    g.moveTo(-6.4,-52);
+    g.quadraticCurveTo(-7.2,-61, 0,-62.6);
+    g.quadraticCurveTo(7.2,-61, 6.4,-52);
+    g.quadraticCurveTo(0,-49.4, -6.4,-52);
+    g.closePath();
+    modeled(g, -7.2,-62.6, 7.2,-49.4, plate);
+    g.fillStyle = "#14120e";
+    g.beginPath(); g.rect(-4.6,-57.2, 9.2, 1.9); g.fill();
+    g.beginPath(); g.rect(-0.8,-59.6, 1.6, 3.4); g.fill();
+    for(let k=0;k<3;k++){
+      g.beginPath(); g.arc(-2.4+k*2.4, -52.6, 0.6, 0, Math.PI*2); g.fill();
+    }
+    g.beginPath();
+    g.moveTo(-1.6,-62);
+    g.quadraticCurveTo(0.4,-70, 4.4,-72.4);
+    g.quadraticCurveTo(2.4,-65.6, 2,-61.6);
+    g.closePath();
+    modeled(g, -1.6,-72.4, 4.4,-61.6, crest);
+
+    // sword arm, in front so the blade reads clearly
+    arm(g, 9.6,-47, 10, 10, 5.4, -armSwing-0.12, plate, (g2)=>{
+      g2.fillStyle = "#c6ccd6"; g2.fillRect(-1,-11, 2, 11);
+      g2.fillStyle = "#5f5847"; g2.fillRect(-3,0, 6, 2.2);
+    });
+    g.restore();
+  }
+
+  function paintWarlordFrame(g, phase, color, dark){
+    const sw = Math.sin(phase);
+    const legSwing = sw*0.24, armSwing = -sw*0.22;
+    const bob = Math.abs(sw)*1.3;
+    const armor = shade(color,10), armorBack = shade(color,-14);
+    const trim = "#2b2620", steel = "#8f96a0";
+
+    groundShadow(g, 18, 6);
+    g.save();
+    g.translate(0,-bob);
+
+    // cloak sweeping behind, drifting with the stride
+    g.beginPath();
+    g.moveTo(-10,-58);
+    g.quadraticCurveTo(-20+legSwing*6,-32, -15+legSwing*8,-3);
+    g.lineTo(15+legSwing*8,-3);
+    g.quadraticCurveTo(20+legSwing*6,-32, 10,-58);
+    g.closePath();
+    modeled(g, -20,-58, 20,-3, "#3c1616");
+
+    leg(g, -5,-34, 17, 17, 8.6, legSwing, armorBack, shade(trim,-8));
+    arm(g, -11.6,-58, 12, 12, 6.6, armSwing+0.16, armorBack);
+
+    // heavy cuirass
+    g.beginPath();
+    g.moveTo(-11.4,-33);
+    g.quadraticCurveTo(-14.4,-46, -11.8,-59);
+    g.lineTo(11.8,-59);
+    g.quadraticCurveTo(14.4,-46, 11.4,-33);
+    g.closePath();
+    modeled(g, -14.4,-59, 14.4,-33, armor);
+    g.beginPath(); g.rect(-11.6,-40, 23.2, 5);
+    modeled(g, -11.6,-40, 11.6,-35, trim);
+
+    leg(g, 5,-34, 17, 17, 8.6, -legSwing, armor, trim);
+
+    // spiked pauldrons -- the boss silhouette read
+    [[-12.4,-58,-1],[12.4,-58,1]].forEach(p=>{
+      g.beginPath();
+      g.ellipse(p[0],p[1], 6.8, 4.8, p[2]*0.3, 0, Math.PI*2);
+      modeled(g, p[0]-6.8,p[1]-4.8, p[0]+6.8,p[1]+4.8, shade(armor,-10));
+      g.beginPath();
+      g.moveTo(p[0]-2.4*p[2], p[1]-2.6);
+      g.lineTo(p[0]+4*p[2], p[1]-10.5);
+      g.lineTo(p[0]+3.2*p[2], p[1]-1.6);
+      g.closePath();
+      modeled(g, p[0]-3,p[1]-10.5, p[0]+4.6,p[1]-1.6, "#8a8272");
+    });
+
+    // horned helm
+    g.beginPath();
+    g.ellipse(0,-68, 8.6, 8, 0, 0, Math.PI*2);
+    modeled(g, -8.6,-76, 8.6,-60, armor);
+    g.fillStyle = "#110d0a";
+    g.beginPath(); g.rect(-5.6,-70.4, 11.2, 2.4); g.fill();
+    g.fillStyle = "#f07a44";
+    g.beginPath(); g.ellipse(-2.6,-69.2, 1.4, 1, 0, 0, Math.PI*2); g.fill();
+    g.beginPath(); g.ellipse(2.6,-69.2, 1.4, 1, 0, 0, Math.PI*2); g.fill();
+    [[-1,-5.8],[1,5.8]].forEach(h=>{
+      const s = h[0], x0 = h[1];
+      g.beginPath();
+      g.moveTo(x0,-73);
+      g.quadraticCurveTo(x0+s*10,-77.5, x0+s*8.6,-87);
+      g.quadraticCurveTo(x0+s*5,-79.5, x0+s*2,-74);
+      g.closePath();
+      modeled(g, x0,-87, x0+s*10,-73, "#e4dcc6");
+    });
+
+    // two-handed axe in the leading hand
+    arm(g, 11.6,-58, 12, 12, 6.6, -armSwing-0.14, armor, (g2)=>{
+      g2.beginPath(); g2.rect(-1.8,-8, 3.6, 22);
+      modeled(g2, -1.8,-8, 1.8,14, "#4a3928", false);
+      g2.beginPath();
+      g2.moveTo(1.6,-3);
+      g2.quadraticCurveTo(13,-2, 14,7);
+      g2.quadraticCurveTo(6.6,4, 1.6,5.6);
+      g2.closePath();
+      modeled(g2, 1.6,-3, 14,7, steel);
+      g2.beginPath();
+      g2.moveTo(-1.6,-3);
+      g2.quadraticCurveTo(-8,-2, -8.6,4.6);
+      g2.quadraticCurveTo(-4,2.6, -1.6,4.2);
+      g2.closePath();
+      modeled(g2, -8.6,-3, -1.6,4.6, shade(steel,-14));
+    });
+    g.restore();
+  }
+
+  const ENEMY_PAINTERS = {
+    goblin: paintGoblinFrame, orc: paintOrcFrame, knight: paintKnightFrame, warlord: paintWarlordFrame
+  };
+
+  function buildEnemySpriteSheet(type){
+    const painter = ENEMY_PAINTERS[type];
+    const def = ENEMY_TYPES[type];
+    const strip = document.createElement("canvas");
+    strip.width = ENEMY_FRAME_W*ENEMY_FRAMES; strip.height = ENEMY_FRAME_H;
+    const g = strip.getContext("2d");
+    for(let i=0;i<ENEMY_FRAMES;i++){
+      const phase = (i/ENEMY_FRAMES)*Math.PI*2;
+      g.save();
+      g.translate(i*ENEMY_FRAME_W+ENEMY_ANCHOR_X, ENEMY_ANCHOR_Y);
+      painter(g, phase, def.color, def.dark);
+      g.restore();
+    }
+    return strip;
+  }
+
+  // A same-shape white silhouette per sheet, used to tint a hit character
+  // without touching any pixels outside its own silhouette (no shadowBlur,
+  // no full-rect overlay bleeding onto the grass behind it).
+  function buildFlashSheet(sourceStrip){
+    const c = document.createElement("canvas");
+    c.width = sourceStrip.width; c.height = sourceStrip.height;
+    const g = c.getContext("2d");
+    g.drawImage(sourceStrip,0,0);
+    g.globalCompositeOperation = "source-in";
+    g.fillStyle = "#ece3cf";
+    g.fillRect(0,0,c.width,c.height);
+    return c;
+  }
+
+  const enemySprites = {}, enemyFlashSprites = {};
+  for(const type of Object.keys(ENEMY_TYPES)){
+    enemySprites[type] = buildEnemySpriteSheet(type);
+    enemyFlashSprites[type] = buildFlashSheet(enemySprites[type]);
   }
 
   // ============================================================
   // Tower drawing (shared between HUD cards and battlefield)
   // ============================================================
-  function drawTower(c, x, y, key, level){
+  function drawTower(c, x, y, key, level, fireFlash, animPhase){
+    fireFlash = fireFlash||0;
+    animPhase = animPhase||0;
     const t = TOWER_TYPES[key];
+    const idle = Math.sin(animPhase*1.6);
     c.save();
-    c.translate(x,y);
+    c.translate(x, y+idle*0.3);
     // base
     c.fillStyle = "#2a251d";
     c.beginPath(); c.ellipse(0, 16, 17, 7, 0, 0, Math.PI*2); c.fill();
@@ -653,25 +1473,32 @@
       c.fillRect(-11,-14,22,30);
       c.fillStyle = "#847c62";
       c.beginPath(); c.moveTo(-14,-14); c.lineTo(0,-30); c.lineTo(14,-14); c.closePath(); c.fill();
+      const recoil = fireFlash*6;
+      c.save();
+      c.translate(6+recoil*0.4, -24+recoil*0.3);
+      c.rotate(-0.15*fireFlash);
       c.fillStyle = t.color;
-      c.beginPath(); c.moveTo(6,-28); c.lineTo(20,-24); c.lineTo(6,-20); c.closePath(); c.fill();
+      c.beginPath(); c.moveTo(0,-4); c.lineTo(14,0); c.lineTo(0,4); c.closePath(); c.fill();
+      c.restore();
       if(level>=2){ c.fillStyle="#e0ac57"; c.fillRect(-3,-8,6,6); }
     } else if(key==="cannon"){
       c.fillStyle = "#4a453c";
       c.fillRect(-14,-6,28,22);
       c.fillStyle = "#847c62";
       c.fillRect(-16,-10,32,8);
+      const kick = -6*fireFlash;
       c.fillStyle = "#2a251d";
-      c.fillRect(-6,-22,26,10);
-      c.beginPath(); c.arc(20,-17,5,0,Math.PI*2); c.fill();
+      c.fillRect(-6+kick,-22,26,10);
+      c.beginPath(); c.arc(20+kick,-17,5,0,Math.PI*2); c.fill();
       if(level>=2){ c.strokeStyle="#4f7a66"; c.lineWidth=2; c.strokeRect(-14,-6,28,22); }
     } else if(key==="mage"){
       c.fillStyle = "#6b6552";
       c.beginPath(); c.moveTo(-10,16); c.lineTo(-8,-18); c.lineTo(8,-18); c.lineTo(10,16); c.closePath(); c.fill();
+      const pulse = Math.sin(animPhase*2.4)*1.5 + fireFlash*5;
       c.fillStyle = t.color;
       c.beginPath(); c.arc(0,-24,8,0,Math.PI*2); c.fill();
-      c.globalAlpha = 0.55;
-      c.beginPath(); c.arc(0,-24, level>=2?13:10, 0, Math.PI*2); c.fill();
+      c.globalAlpha = 0.5 + fireFlash*0.3;
+      c.beginPath(); c.arc(0,-24, (level>=2?13:10)+pulse, 0, Math.PI*2); c.fill();
       c.globalAlpha = 1;
     }
     c.restore();
@@ -679,31 +1506,40 @@
 
   function drawEnemy(c, e){
     const def = ENEMY_TYPES[e.type];
+    const walk = e.animPhase*0.15;
+    const frameIdx = Math.round((walk % (Math.PI*2))/(Math.PI*2)*ENEMY_FRAMES) % ENEMY_FRAMES;
+    const sx = frameIdx*ENEMY_FRAME_W;
+    const scale = ENEMY_DRAW_SCALE;
+    const dx = -ENEMY_ANCHOR_X*scale, dy = -ENEMY_ANCHOR_Y*scale;
+    const dw = ENEMY_FRAME_W*scale, dh = ENEMY_FRAME_H*scale;
+
     c.save();
     c.translate(e.x, e.y);
+
     if(e.slowUntil > now){
+      const ringY = -def.topOffset*scale*0.55;
       c.globalAlpha = 0.5 + 0.5*Math.sin(now*10);
       c.strokeStyle = "#6fa88d"; c.lineWidth = 2;
-      c.beginPath(); c.arc(0,0, def.radius+4, 0, Math.PI*2); c.stroke();
+      c.beginPath(); c.arc(0, ringY, def.radius+6, 0, Math.PI*2); c.stroke();
       c.globalAlpha = 1;
     }
-    c.fillStyle = def.dark;
-    c.beginPath(); c.arc(1,2, def.radius, 0, Math.PI*2); c.fill();
-    c.fillStyle = def.color;
-    c.beginPath(); c.arc(0,0, def.radius, 0, Math.PI*2); c.fill();
-    if(e.type==="knight" || e.type==="warlord"){
-      c.fillStyle = "#a6342f";
-      c.fillRect(-2,-def.radius-6,4,8);
+
+    c.drawImage(enemySprites[e.type], sx, 0, ENEMY_FRAME_W, ENEMY_FRAME_H, dx, dy, dw, dh);
+    if(e.hitFlash>0){
+      c.globalAlpha = e.hitFlash*0.7;
+      c.drawImage(enemyFlashSprites[e.type], sx, 0, ENEMY_FRAME_W, ENEMY_FRAME_H, dx, dy, dw, dh);
+      c.globalAlpha = 1;
     }
     c.restore();
 
-    // hp bar
+    // hp bar, anchored above this type's actual sprite height
     const w = def.radius*2.1;
+    const barY = e.y - def.topOffset*scale - 6;
     const ratio = Math.max(0, e.hp/e.maxHp);
     c.fillStyle = "rgba(0,0,0,.55)";
-    c.fillRect(e.x-w/2, e.y-def.radius-10, w, 4);
+    c.fillRect(e.x-w/2, barY, w, 4);
     c.fillStyle = ratio>0.5 ? "#6fa88d" : ratio>0.25 ? "#e0ac57" : "#c94842";
-    c.fillRect(e.x-w/2, e.y-def.radius-10, w*ratio, 4);
+    c.fillRect(e.x-w/2, barY, w*ratio, 4);
   }
 
   // ============================================================
@@ -824,7 +1660,10 @@
       if(isPathCell(g.c,g.r) || occupied){ showToast("Não é possível construir aqui"); return; }
       if(gold < t.cost){ showToast("Ouro insuficiente"); return; }
       gold -= t.cost;
-      towers.push({type:armedType, c:g.c, r:g.r, x:g.c*TILE+TILE/2, y:g.r*TILE+TILE/2, level:1, cooldown:0});
+      towers.push({
+        type:armedType, c:g.c, r:g.r, x:g.c*TILE+TILE/2, y:g.r*TILE+TILE/2, level:1,
+        cooldown:0, fireFlash:0, animPhase:Math.random()*6
+      });
       armedType = null;
       refreshCardStates();
       updateHUD();
@@ -851,7 +1690,7 @@
   });
 
   document.getElementById("btn-upgrade").addEventListener("click", ()=>{
-    if(!selectedTower) return;
+    if(ended || !selectedTower) return;
     const t = TOWER_TYPES[selectedTower.type];
     if(selectedTower.level>=2 || gold<t.upgradeCost) return;
     gold -= t.upgradeCost;
@@ -862,7 +1701,7 @@
   });
 
   document.getElementById("btn-sell").addEventListener("click", ()=>{
-    if(!selectedTower) return;
+    if(ended || !selectedTower) return;
     gold += sellValue(selectedTower);
     towers = towers.filter(tw=>tw!==selectedTower);
     selectedTower = null;
@@ -901,7 +1740,7 @@
         id: enemyIdSeq++, type:item.type, dist:0,
         hp: Math.round(def.hp*item.hpMul), maxHp: Math.round(def.hp*item.hpMul),
         speed: def.speed, x:WAYPOINTS[0].x, y:WAYPOINTS[0].y,
-        slowUntil:0, slowFactor:1
+        slowUntil:0, slowFactor:1, animPhase:0, hitFlash:0
       });
       spawnTimer = spawnInterval;
     }
@@ -944,17 +1783,24 @@
 
   function updateTowers(dt){
     for(const tw of towers){
+      tw.animPhase += dt;
       tw.cooldown -= dt;
+      tw.fireFlash = Math.max(0, tw.fireFlash - dt*5);
       const def = towerDef(tw);
       if(tw.cooldown>0) continue;
       const target = findTarget(tw, def);
       if(!target) continue;
       tw.cooldown = def.rate;
+      tw.fireFlash = 1;
       projectiles.push({
         x:tw.x, y:tw.y-20, tx:target.x, ty:target.y,
         speed:def.projSpeed, dmg:def.dmg, color:TOWER_TYPES[tw.type].color,
         splash:def.splash||0, slow: def.slow||null,
         targetId: target.id
+      });
+      spawnParticle("muzzle", tw.x, tw.y-20, {
+        life:0.12, size:16, layer:"front",
+        glow: tw.type==="mage" ? GLOW_GREEN : GLOW_AMBER
       });
       playSfx(tw.type==="cannon"?"cannon":"shoot");
     }
@@ -986,24 +1832,46 @@
         const def = ENEMY_TYPES[e.type];
         const dealt = Math.max(1, p.dmg-def.armor);
         e.hp -= dealt;
+        e.hitFlash = 1;
         if(p.slow){ e.slowUntil = now+p.slow.duration; e.slowFactor = p.slow.factor; }
+        spawnParticle("dmgtext", e.x, e.y-def.topOffset*ENEMY_DRAW_SCALE-14, {
+          vy:-26, life:0.7, color:"#ece3cf", text:String(dealt), layer:"front"
+        });
+        for(let k=0;k<3;k++){
+          const ang = Math.random()*Math.PI*2, spd = 30+Math.random()*50;
+          spawnParticle("spark", p.tx, p.ty, {
+            vx:Math.cos(ang)*spd, vy:Math.sin(ang)*spd, size:1.8,
+            life:0.25+Math.random()*0.15, color:p.color, layer:"front"
+          });
+        }
       }
     }
-    pops.push({x:p.tx, y:p.ty, r:4, max: p.splash>0?p.splash:14, t:0});
+    spawnParticle("ring", p.tx, p.ty, {
+      size:4, growTo: p.splash>0?p.splash:14, life:0.33, color:"#ece3cf", layer:"front"
+    });
     if(anyHit) playSfx("hit");
   }
 
   function updateEnemies(dt){
     for(let i=enemies.length-1;i>=0;i--){
       const e = enemies[i];
+      e.hitFlash = Math.max(0, e.hitFlash - dt*4);
       if(e.hp<=0){
         gold += ENEMY_TYPES[e.type].reward;
-        pops.push({x:e.x,y:e.y,r:2,max:22,t:0,gold:true});
+        spawnParticle("ring", e.x, e.y, {size:2, growTo:22, life:0.33, color:"#e0ac57", layer:"front"});
+        for(let k=0;k<5;k++){
+          const ang = Math.random()*Math.PI*2, spd = 40+Math.random()*60;
+          spawnParticle("spark", e.x, e.y, {
+            vx:Math.cos(ang)*spd, vy:Math.sin(ang)*spd-20, size:2,
+            life:0.4+Math.random()*0.2, color:"#e0ac57", layer:"front"
+          });
+        }
         enemies.splice(i,1);
         updateHUD();
         continue;
       }
       const spd = e.speed * (now<e.slowUntil ? e.slowFactor : 1);
+      e.animPhase += spd*dt;
       e.dist += spd*dt;
       if(e.dist>=TOTAL_LEN){
         lives -= ENEMY_TYPES[e.type].dmg;
@@ -1015,14 +1883,6 @@
       }
       const p = pointAtDistance(e.dist);
       e.x=p.x; e.y=p.y;
-    }
-  }
-
-  function updatePops(dt){
-    for(let i=pops.length-1;i>=0;i--){
-      const pop = pops[i];
-      pop.t += dt*3;
-      if(pop.t>=1) pops.splice(i,1);
     }
   }
 
@@ -1064,6 +1924,17 @@
     ctx.clearRect(0,0,CANVAS_W,CANVAS_H);
     ctx.drawImage(bg,0,0);
 
+    // drifting cloud-shadow layer over the baked terrain (cheap: 2 drawImage calls)
+    ctx.save();
+    ctx.globalCompositeOperation = "multiply";
+    ctx.globalAlpha = 0.6;
+    ctx.drawImage(cloudLayer, cloudOffset, 0);
+    ctx.drawImage(cloudLayer, cloudOffset+CANVAS_W, 0);
+    ctx.restore();
+
+    drawTorches();
+    drawParticles("back");
+
     // build preview
     if(armedType && hoverCell && !ended){
       const t = TOWER_TYPES[armedType];
@@ -1084,7 +1955,7 @@
       ctx.setLineDash([]);
     }
 
-    for(const tw of towers) drawTower(ctx, tw.x, tw.y, tw.type, tw.level);
+    for(const tw of towers) drawTower(ctx, tw.x, tw.y, tw.type, tw.level, tw.fireFlash, tw.animPhase);
     for(const e of enemies) drawEnemy(ctx, e);
 
     for(const p of projectiles){
@@ -1092,14 +1963,7 @@
       ctx.beginPath(); ctx.arc(p.x,p.y, p.splash>0?5:3, 0, Math.PI*2); ctx.fill();
     }
 
-    for(const pop of pops){
-      const r = pop.r + (pop.max-pop.r)*pop.t;
-      ctx.globalAlpha = 1-pop.t;
-      ctx.strokeStyle = pop.gold ? "#e0ac57" : "#ece3cf";
-      ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(pop.x,pop.y,r,0,Math.PI*2); ctx.stroke();
-      ctx.globalAlpha = 1;
-    }
+    drawParticles("front");
   }
 
   // ============================================================
@@ -1148,7 +2012,10 @@
     updateTowers(dt);
     updateProjectiles(dt);
     updateEnemies(dt);
-    updatePops(dt);
+    updateParticles(dt);
+    spawnAmbient(dt);
+    cloudOffset -= dt*8;
+    if(cloudOffset<=-CANVAS_W) cloudOffset += CANVAS_W;
     waveClearCheck();
     render();
   }
