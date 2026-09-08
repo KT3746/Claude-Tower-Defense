@@ -35,19 +35,45 @@ chamado para continuar este projeto, comece lendo `index.html` inteiro — são
 - **Incremento 3c**: 3 bugs corrigidos (espada do cavaleiro que tinha
   sumido numa reescrita, número de dano na altura errada, upgrade/venda
   funcionando depois do jogo já ter acabado).
+- **Incremento 4a**: **Corvo de Guerra** (inimigo voador) + **Balista**
+  (torre nova anti-aérea), implementados juntos porque um sem o outro não
+  dá pra testar de verdade.
+  - `ENEMY_TYPES.raven` tem `flying:true` e `flyHeight` (deslocamento
+    vertical); `drawEnemy` lê `def.flying` pra levantar o sprite e desenhar
+    uma sombra separada na posição real (no chão), em vez de assar a sombra
+    no sprite como os inimigos terrestres fazem via `groundShadow()`.
+  - `paintRavenFrame` é um painter novo (asas batem com `Math.sin(phase)`
+    em vez de ciclo de passada com perna/joelho) registrado em
+    `ENEMY_PAINTERS.raven` — usa a mesma folha de sprites de 6 quadros do
+    Incremento 2, só que sem `groundShadow()` embutido (pelo motivo acima).
+  - Corvo liberado a partir da onda 4 em `generateWave` (`if(n>=4)
+    available.push("raven")`), misturado aleatoriamente com os outros
+    tipos como orc/cavaleiro já eram.
+  - `TOWER_TYPES.ballista` tem `canHitFlying:true`. **Decisão de design
+    tomada nesta sessão** (não estava no combinado anterior): a Balista
+    também atinge inimigos terrestres — não é exclusiva pra voadores. A
+    ideia foi evitar uma torre "morta" em ondas sem corvo; ela compensa
+    isso custando mais (110) e tendo o maior alcance do jogo (150/175).
+    Ainda não foi validado com o usuário — se ele preferir Balista
+    exclusiva pra voadores, é só tirar o fallback terrestre de
+    `findTarget`/`applyHit`.
+  - `findTarget` e `applyHit` ganharam a checagem `eDef.flying &&
+    !def.canHitFlying` pra pular voadores quando a torre/projétil não tem
+    a capacidade — inclui o caso do canhão (splash) acertar de raspão um
+    corvo que caiu dentro do raio da explosão.
+  - Tecla `4` arma a Balista (`renderTowerCards` já gera o `kbd` certo
+    sozinho, por ordem de inserção em `TOWER_TYPES`).
+  - Verificado: `node --check` limpo, Playwright rodou 6 ondas em
+    velocidade ×2 sem nenhum erro de console (fora o
+    `ERR_CONNECTION_RESET` esperado da fonte do Google Fonts, que não
+    carrega no sandbox de teste por falta de rede — não é bug do jogo).
+    Confirmado visualmente por screenshot: Balista com zoom (base +
+    dois braços curvos + virote) e Corvo de Guerra voando sobre a estrada
+    com a sombra separada do corpo.
 
 ## O que falta (próximos incrementos combinados com o usuário)
 
-**Incremento 4 — conteúdo novo:**
-- **Balista**: torre nova dedicada anti-aérea (única capaz de atingir
-  voadores — decisão do usuário: torre nova, não upgrade de torre existente).
-  `findTarget` precisa ganhar uma checagem que ignora inimigos voadores a
-  menos que a torre tenha essa capacidade.
-- **Corvo de Guerra**: inimigo voador. Reaproveita 100% do caminho existente
-  (sem sistema de altitude novo) — desenhado com deslocamento vertical +
-  sombra no chão. Nasce já usando o padrão de sprite-sheet do Incremento 2
-  (quadros de bater asas em vez de andar). Liberado a partir de uma onda
-  específica em `generateWave`.
+**Ainda dentro do Incremento 4 — conteúdo novo:**
 - **Torre de Óleo**: segunda torre nova, dano contínuo em área — reaproveita
   a mesma estrutura já usada pro efeito de lentidão do mago (duração +
   efeito aplicado ao inimigo), só que dano ao longo do tempo em vez de
