@@ -1,4 +1,5 @@
 <title>Muralha</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Archivo:wght@500;600;700;800&display=swap">
 <style>
@@ -20,6 +21,7 @@
     --gold-bright:#e0ac57;
     --shadow:rgba(0,0,0,.55);
     --radius:10px;
+    --frame-pad:8px;
   }
 
   *{box-sizing:border-box;}
@@ -34,6 +36,11 @@
     display:flex;
     justify-content:center;
     padding:20px 14px 40px;
+    -webkit-text-size-adjust:100%;
+    touch-action:manipulation;      /* mata o atraso de 300ms do duplo-toque */
+    overscroll-behavior:none;       /* sem "puxar pra atualizar" durante o jogo */
+    -webkit-user-select:none;
+    user-select:none;
   }
 
   h1,h2{
@@ -115,15 +122,15 @@
     gap:14px;
     align-items:start;
   }
-  @media (max-width:820px){
-    .board{grid-template-columns:1fr;}
-  }
 
   .battlefield-frame{
     position:relative;
+    width:fit-content;
+    max-width:100%;
+    justify-self:center;
     border:1px solid var(--line);
     border-radius:var(--radius);
-    padding:8px;
+    padding:var(--frame-pad);
     background:linear-gradient(180deg,var(--panel-2),var(--panel));
     box-shadow:0 10px 30px var(--shadow), inset 0 0 0 1px rgba(0,0,0,.3);
   }
@@ -135,19 +142,19 @@
     50%{box-shadow:0 10px 30px var(--shadow), inset 0 0 0 1px rgba(0,0,0,.3), 0 0 55px -14px rgba(198,146,61,.5);}
   }
 
+  /* Largura/altura reais sao definidas em pixels por layout(), que encaixa
+     o tabuleiro na viewport em vez de deixar a pagina fluir em volta dele. */
   #game{
     display:block;
-    width:100%;
-    height:auto;
-    aspect-ratio:900/500;
     border-radius:6px;
     cursor:crosshair;
     background:#222;
+    touch-action:none;   /* o toque no tabuleiro constroi, nao rola a pagina */
   }
 
   .overlay{
     position:absolute;
-    inset:8px;
+    inset:var(--frame-pad);
     border-radius:6px;
     background:rgba(10,8,5,.82);
     backdrop-filter:blur(2px);
@@ -337,6 +344,104 @@
   }
   .legend b{color:var(--ink-dim);}
 
+  /* ============================================================
+     Modos compactos (celular / janela pequena)
+
+     layout(), no script, escolhe o modo e mede o tamanho do tabuleiro pra
+     caber na viewport; estas regras so cuidam da moldura em volta dele:
+       .is-compact -> cromo enxuto (topo fino, sem legenda, botoes maiores)
+       .is-stack   -> retrato: painel embaixo, cartas de torre em linha
+       .is-side    -> paisagem: painel estreito ao lado do tabuleiro
+     ============================================================ */
+  .is-compact{
+    --frame-pad:5px;
+    padding:6px calc(8px + env(safe-area-inset-right)) calc(6px + env(safe-area-inset-bottom)) calc(8px + env(safe-area-inset-left));
+  }
+  .is-compact .app{gap:8px;}
+  .is-compact .topbar{padding:5px 10px;gap:8px;border-radius:8px;}
+  .is-compact .brand{gap:8px;}
+  .is-compact .brand-mark{font-size:1.35rem;}
+  .is-compact .brand h1{font-size:1.05rem;}
+  .is-compact .tagline{display:none;}
+  .is-compact .legend{display:none;}
+  .is-compact .stats{gap:6px;}
+  .is-compact .stat{padding:2px 9px;min-width:0;border-radius:6px;}
+  .is-compact .stat-label{font-size:.55rem;letter-spacing:.06em;}
+  .is-compact .stat-value{font-size:1rem;}
+  .is-compact .board{gap:8px;}
+  .is-compact .control-panel{gap:8px;}
+  .is-compact .panel-section{padding:8px;border-radius:8px;}
+  .is-compact .panel-section h2{display:none;}
+  .is-compact .hint{display:none;}
+  .is-compact .overlay{padding:16px;}
+  .is-compact .overlay-card{gap:10px;}
+  .is-compact .overlay-card h2{font-size:1.3rem;}
+  .is-compact .overlay-card p{font-size:.8rem;line-height:1.4;}
+  .is-compact .btn{min-height:42px;padding:8px 10px;}
+  .is-compact .tower-card .tc-desc{display:none;}
+  .is-compact .tower-card .tc-name kbd{display:none;}
+  /* pausa/velocidade/som/reiniciar viram botoes de icone quando o espaco aperta */
+  .is-compact .btn--icon{width:42px;}
+  .is-compact #btn-restart{
+    flex:0 0 auto;width:42px;padding:8px 0;text-align:center;font-size:0;
+  }
+  .is-compact #btn-restart::after{content:"\21ba";font-size:1.15rem;line-height:1;}
+  /* as duas secoes trocaveis (arsenal / torre selecionada) tem altura fixa,
+     senao o tabuleiro mudaria de tamanho a cada torre selecionada */
+  .is-compact #arsenal,
+  .is-compact #tower-info{height:var(--swap-h);flex:0 0 auto;overflow:hidden;}
+  .is-compact .actions{flex:0 0 auto;}
+  .is-compact #tower-info .ti-stats{margin-bottom:8px;font-size:.75rem;}
+  /* `display:contents` dissolve a .btn-row: os botoes viram celulas da mesma
+     grade das acoes, entao cada modo os arruma como quiser sem mexer no HTML */
+  .is-compact .actions{display:grid;gap:6px;min-width:0;}
+  .is-compact .actions .btn-row{display:contents;}
+  .is-compact .actions .btn{min-width:0;}
+
+  /* ---- retrato ---- */
+  .is-stack{--swap-h:94px;}
+  .is-stack .board{grid-template-columns:minmax(0,1fr);}
+  .is-stack .tower-cards{flex-direction:row;gap:6px;}
+  .is-stack .tower-card{
+    flex:1 1 0;min-width:0;flex-direction:column;gap:1px;
+    padding:5px 3px;align-items:center;text-align:center;
+  }
+  .is-stack .tower-card canvas{width:30px;height:36px;}
+  .is-stack .tower-card .tc-info{width:100%;}
+  .is-stack .tower-card .tc-name{
+    justify-content:center;font-size:.7rem;line-height:1.1;
+  }
+  .is-stack .tower-card .tc-cost{font-size:.68rem;margin-top:1px;}
+  .is-stack #tower-info .ti-stats{flex-direction:row;gap:12px;margin-bottom:6px;}
+  /* tudo numa linha so: [Convocar onda][Pausa][x2][som][reiniciar] */
+  .is-stack .actions{grid-template-columns:minmax(70px,1fr) auto auto auto auto;}
+  .is-stack #btn-start-wave{width:auto;}
+
+  /* ---- paisagem ---- */
+  .is-side{--swap-h:150px;}
+  .is-side .board{grid-template-columns:minmax(0,1fr) 168px;}
+  .is-side .tower-cards{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
+  .is-side .tower-card{
+    flex-direction:column;gap:1px;padding:5px 3px;
+    align-items:center;text-align:center;
+  }
+  .is-side .tower-card canvas{width:26px;height:31px;}
+  .is-side .tower-card .tc-info{width:100%;}
+  .is-side .tower-card .tc-name{justify-content:center;font-size:.66rem;line-height:1.1;}
+  .is-side .tower-card .tc-cost{font-size:.64rem;margin-top:0;}
+  /* painel estreito: onda em cima, os quatro controles em 2x2 */
+  .is-side .actions{grid-template-columns:1fr 1fr;}
+  .is-side #btn-start-wave{grid-column:span 2;width:auto;}
+  .is-side .actions .btn{width:auto;}
+  .is-side #tower-info .ti-actions{flex-direction:column;}
+  .is-side .control-panel{overflow-y:auto;}
+  @media (max-height:380px){
+    .is-side{--swap-h:118px;}
+    .is-side .tower-card canvas{width:22px;height:26px;}
+    .is-side #tower-info .ti-actions{flex-direction:row;}
+    .is-compact .btn{min-height:36px;}
+  }
+
   ::selection{background:var(--gold);color:#1a1610;}
 </style>
 
@@ -391,7 +496,7 @@
       <div class="panel-section" id="arsenal">
         <h2>Arsenal</h2>
         <div class="tower-cards" id="tower-cards"></div>
-        <p class="hint" id="arsenal-hint">Selecione uma torre e clique num terreno livre (fora da estrada) para construir.</p>
+        <p class="hint" id="arsenal-hint">Selecione uma torre e toque num terreno livre (fora da estrada) para construir.</p>
       </div>
 
       <div class="panel-section hidden" id="tower-info">
@@ -568,26 +673,123 @@
     updateHUD();
     renderTowerCards();
     hideTowerInfo();
-    document.getElementById("btn-speed").textContent = "Velocidade ×1";
     document.getElementById("btn-start-wave").disabled = false;
-    document.getElementById("btn-start-wave").textContent = "Convocar Onda 1";
+    refreshActionLabels();
   }
 
   // ============================================================
-  // Canvas / rendering setup
+  // Canvas / view / layout
+  //
+  // O jogo sempre desenha num "mundo" fixo de 900x500, mas a *vista* em que
+  // esse mundo e pintado se adapta a tela: layout() mede a viewport, escolhe
+  // o modo de cromo (ver o bloco .is-compact/.is-stack/.is-side no CSS) e
+  // dimensiona o canvas em pixels pro tabuleiro inteiro caber sem rolagem.
+  //
+  // No celular em retrato o mundo ainda gira 90 graus (ROT): o lado longo do
+  // mapa passa a seguir o lado longo da tela, o que quase triplica a area
+  // util do tabuleiro. Tudo que tem "pra cima" (personagens, torres, arvores,
+  // castelo, numeros de dano) contra-gira via upright() e continua em pe;
+  // o que e chao (estrada, grama, sombras, circulos de alcance) gira junto.
   // ============================================================
   const canvas = document.getElementById("game");
   const ctx = canvas.getContext("2d");
   const dpr = Math.max(1, Math.min(2, window.devicePixelRatio||1));
-  canvas.width = CANVAS_W*dpr;
-  canvas.height = CANVAS_H*dpr;
-  ctx.scale(dpr,dpr);
 
-  // Pre-render static background (grass + road + stone edging) once.
+  const ROT_ANGLE = Math.PI/2;
+  let ROT = false;                        // mundo girado 90 graus na vista?
+  let viewW = CANVAS_W, viewH = CANVAS_H; // espaco da vista (mundo, talvez trocado)
+  let pixScale = dpr;                     // unidades da vista -> pixels do buffer
+  let compactUI = false;                  // rotulos curtos / botoes de icone
+  let bgRot = false;                      // orientacao com que o fundo foi assado
+
+  // ponto da vista -> ponto do mundo
+  function v2w(vx, vy){ return ROT ? {x:vy, y:viewW-vx} : {x:vx, y:vy}; }
+  // vetor em coordenadas de tela (ex.: "pra cima", gravidade) -> vetor do mundo
+  function sv(sx, sy){ return ROT ? {x:sy, y:-sx} : {x:sx, y:sy}; }
+  // cancela a rotacao do mundo, pra forma atual ser desenhada em pe
+  function upright(c){ if(ROT) c.rotate(-ROT_ANGLE); }
+
+  const appEl = document.querySelector(".app");
+  const boardEl = document.querySelector(".board");
+  const frameEl = document.querySelector(".battlefield-frame");
+  const topbarEl = document.querySelector(".topbar");
+  const panelEl = document.querySelector(".control-panel");
+  const legendEl = document.querySelector(".legend");
+  function cssPx(v){ return parseFloat(v)||0; }
+
+  function layout(){
+    const vv = window.visualViewport;
+    const vw = Math.round((vv && vv.width) || window.innerWidth);
+    const vh = Math.round((vv && vv.height) || window.innerHeight);
+    const portrait = vh > vw;
+    const compact = vw < 820 || vh < 620;
+
+    const body = document.body;
+    body.classList.toggle("is-compact", compact);
+    body.classList.toggle("is-stack", compact && portrait);
+    body.classList.toggle("is-side", compact && !portrait);
+    if(compact !== compactUI){ compactUI = compact; refreshActionLabels(); }
+
+    // medido *depois* das classes de modo entrarem, pros numeros serem reais
+    const bs = getComputedStyle(body);
+    const appGap = cssPx(getComputedStyle(appEl).rowGap);
+    const boardGap = cssPx(getComputedStyle(boardEl).columnGap);
+    const fs = getComputedStyle(frameEl);
+    const frameX = cssPx(fs.paddingLeft)+cssPx(fs.paddingRight)+cssPx(fs.borderLeftWidth)+cssPx(fs.borderRightWidth);
+    const frameY = cssPx(fs.paddingTop)+cssPx(fs.paddingBottom)+cssPx(fs.borderTopWidth)+cssPx(fs.borderBottomWidth);
+
+    let availW = appEl.clientWidth - frameX;
+    let availH = vh - cssPx(bs.paddingTop) - cssPx(bs.paddingBottom)
+               - topbarEl.offsetHeight - appGap - frameY;
+    if(!compact) availH -= legendEl.offsetHeight + appGap;
+    if(compact && portrait) availH -= panelEl.offsetHeight + boardGap;
+    else                    availW -= panelEl.offsetWidth + boardGap;
+    availW = Math.max(220, availW);
+    availH = Math.max(160, availH);
+
+    // fica com a orientacao que realmente rende um tabuleiro maior (com uma
+    // margem, pra nao virar por um fio) -- so em tela de celular em retrato
+    const sFlat = Math.min(availW/CANVAS_W, availH/CANVAS_H);
+    const sTurned = Math.min(availW/CANVAS_H, availH/CANVAS_W);
+    const rot = compact && portrait && sTurned > sFlat*1.1;
+    const scale = Math.min(1, rot ? sTurned : sFlat);
+
+    ROT = rot;
+    viewW = rot ? CANVAS_H : CANVAS_W;
+    viewH = rot ? CANVAS_W : CANVAS_H;
+
+    const cssW = Math.max(1, Math.round(viewW*scale));
+    const cssH = Math.max(1, Math.round(viewH*scale));
+    canvas.style.width = cssW+"px";
+    canvas.style.height = cssH+"px";
+    // em paisagem o painel fica ao lado: ele nunca pode ser mais alto que o
+    // tabuleiro, senao a pagina volta a rolar em telas bem baixas
+    panelEl.style.maxHeight = (compact && !portrait) ? (cssH + frameY)+"px" : "";
+    // o buffer acompanha o tamanho exibido: no celular sao bem menos pixels
+    // pra preencher por quadro do que os 900x500@2x fixos de antes
+    const bw = Math.round(cssW*dpr), bh = Math.round(cssH*dpr);
+    if(canvas.width !== bw || canvas.height !== bh){ canvas.width = bw; canvas.height = bh; }
+    pixScale = bw/viewW;
+
+    if(rot !== bgRot){ bgRot = rot; paintBackground(); }
+  }
+
+  // RNG semeado so pro cenario assado: o mapa fica identico em toda carga e,
+  // principalmente, identico quando o fundo e reassado ao girar o tabuleiro.
+  let rndState = 1;
+  function srand(v){ rndState = (v>>>0) || 1; }
+  function rnd(){ rndState = (rndState*1664525 + 1013904223)>>>0; return rndState/4294967296; }
+
+  // Pre-render static background (grass + road + stone edging).
+  // Reassado quando a orientacao da vista muda, pra arvores/castelo/tochas
+  // continuarem em pe (ver upright()).
   const bg = document.createElement("canvas");
   bg.width = CANVAS_W; bg.height = CANVAS_H;
-  (function paintBackground(){
+  function paintBackground(){
     const bctx = bg.getContext("2d");
+    bctx.setTransform(1,0,0,1,0,0);
+    bctx.clearRect(0,0,CANVAS_W,CANVAS_H);
+    srand(20250908);
     paintGrassBase(bctx);
     paintScenery(bctx);
 
@@ -609,35 +811,42 @@
     drawGate(bctx, WAYPOINTS[0].x+6, WAYPOINTS[0].y, "#2a251d", "#847c62");
     // castle gate marker (right)
     drawCastle(bctx, WAYPOINTS[WAYPOINTS.length-1].x-24, WAYPOINTS[WAYPOINTS.length-1].y);
-  })();
+  }
+  paintBackground();
 
   function drawGate(c, x, y, fill, edge){
+    c.save();
+    c.translate(x, y); upright(c);
     c.fillStyle = fill;
     c.beginPath();
-    c.arc(x, y, 20, Math.PI*0.5, Math.PI*1.5);
+    c.arc(0, 0, 20, Math.PI*0.5, Math.PI*1.5);
     c.closePath();
     c.fill();
     c.strokeStyle = edge; c.lineWidth = 3; c.stroke();
+    c.restore();
   }
 
   function drawCastle(c, x, y){
+    c.save();
+    c.translate(x, y); upright(c);
     c.fillStyle = PALETTE.stone;
-    c.fillRect(x-6, y-38, 40, 76);
+    c.fillRect(-6, -38, 40, 76);
     c.fillStyle = PALETTE.stoneDark;
-    for(let i=0;i<4;i++) c.fillRect(x-2+i*10, y-46, 6, 10);
+    for(let i=0;i<4;i++) c.fillRect(-2+i*10, -46, 6, 10);
     c.fillStyle = "#14110d";
-    c.fillRect(x+8, y-6, 16, 36);
+    c.fillRect(8, -6, 16, 36);
     c.strokeStyle = PALETTE.stoneDark; c.lineWidth = 2;
-    c.strokeRect(x-6, y-38, 40, 76);
+    c.strokeRect(-6, -38, 40, 76);
     // flag
     c.strokeStyle = "#5f5847"; c.lineWidth = 2;
-    c.beginPath(); c.moveTo(x+14, y-46); c.lineTo(x+14, y-70); c.stroke();
+    c.beginPath(); c.moveTo(14, -46); c.lineTo(14, -70); c.stroke();
     c.fillStyle = "#a6342f";
-    c.beginPath(); c.moveTo(x+14,y-70); c.lineTo(x+34,y-64); c.lineTo(x+14,y-58); c.closePath(); c.fill();
+    c.beginPath(); c.moveTo(14,-70); c.lineTo(34,-64); c.lineTo(14,-58); c.closePath(); c.fill();
     // torch mounts flanking the gate (flame + glow drawn per-frame, see drawTorches)
     c.fillStyle = "#2a251d";
-    c.fillRect(x-14, y-30, 4, 24);
-    c.fillRect(x+40, y-30, 4, 24);
+    c.fillRect(-14, -30, 4, 24);
+    c.fillRect(40, -30, 4, 24);
+    c.restore();
   }
 
   // ============================================================
@@ -655,9 +864,9 @@
     // organic color blotches replace the old uniform checker tiling
     const blotches = ["#3a4a2c","#465a34","#31401f","#4f6339"];
     for(let i=0;i<150;i++){
-      const x = Math.random()*CANVAS_W, y = Math.random()*CANVAS_H;
-      const r = 26+Math.random()*64;
-      const col = blotches[(Math.random()*blotches.length)|0];
+      const x = rnd()*CANVAS_W, y = rnd()*CANVAS_H;
+      const r = 26+rnd()*64;
+      const col = blotches[(rnd()*blotches.length)|0];
       const grad = bctx.createRadialGradient(x,y,0,x,y,r);
       grad.addColorStop(0, col+"33");
       grad.addColorStop(1, col+"00");
@@ -669,11 +878,11 @@
     bctx.globalAlpha = 0.35;
     bctx.lineWidth = 1;
     for(let i=0;i<900;i++){
-      const x = Math.random()*CANVAS_W, y = Math.random()*CANVAS_H;
-      bctx.strokeStyle = Math.random()<0.5 ? "#586f3c" : "#223014";
+      const x = rnd()*CANVAS_W, y = rnd()*CANVAS_H;
+      bctx.strokeStyle = rnd()<0.5 ? "#586f3c" : "#223014";
       bctx.beginPath();
       bctx.moveTo(x,y);
-      bctx.lineTo(x+(Math.random()-0.5)*4, y-3-Math.random()*3);
+      bctx.lineTo(x+(rnd()-0.5)*4, y-3-rnd()*3);
       bctx.stroke();
     }
     bctx.globalAlpha = 1;
@@ -700,11 +909,11 @@
 
     // scattered pebbles
     for(let i=0;i<90;i++){
-      const d = Math.random()*TOTAL_LEN;
+      const d = rnd()*TOTAL_LEN;
       const p = pointAtDistance(d);
-      const ox=(Math.random()-0.5)*TILE*0.6, oy=(Math.random()-0.5)*TILE*0.6;
-      const r = 1+Math.random()*2.2;
-      bctx.fillStyle = Math.random()<0.5 ? PALETTE.stone : PALETTE.stoneDark;
+      const ox=(rnd()-0.5)*TILE*0.6, oy=(rnd()-0.5)*TILE*0.6;
+      const r = 1+rnd()*2.2;
+      bctx.fillStyle = rnd()<0.5 ? PALETTE.stone : PALETTE.stoneDark;
       bctx.beginPath(); bctx.arc(p.x+ox,p.y+oy,r,0,Math.PI*2); bctx.fill();
     }
 
@@ -712,13 +921,13 @@
     bctx.strokeStyle = "rgba(42,37,29,0.5)";
     bctx.lineWidth = 1;
     for(let i=0;i<18;i++){
-      const d = Math.random()*TOTAL_LEN;
+      const d = rnd()*TOTAL_LEN;
       const p = pointAtDistance(d);
-      let cx=p.x+(Math.random()-0.5)*TILE*0.5, cy=p.y+(Math.random()-0.5)*TILE*0.5;
+      let cx=p.x+(rnd()-0.5)*TILE*0.5, cy=p.y+(rnd()-0.5)*TILE*0.5;
       bctx.beginPath();
       bctx.moveTo(cx,cy);
       for(let k=0;k<3;k++){
-        cx += (Math.random()-0.5)*8; cy += (Math.random()-0.5)*8;
+        cx += (rnd()-0.5)*8; cy += (rnd()-0.5)*8;
         bctx.lineTo(cx,cy);
       }
       bctx.stroke();
@@ -726,16 +935,16 @@
 
     // overgrown edge tufts nibbling into the dirt
     for(let i=0;i<70;i++){
-      const d = Math.random()*TOTAL_LEN;
+      const d = rnd()*TOTAL_LEN;
       const p = pointAtDistance(d);
-      const ang = Math.random()*Math.PI*2;
+      const ang = rnd()*Math.PI*2;
       const edge = TILE*0.42;
       const x = p.x+Math.cos(ang)*edge, y=p.y+Math.sin(ang)*edge;
       bctx.strokeStyle = "#3e5629";
       bctx.lineWidth = 1.3;
       bctx.beginPath();
       bctx.moveTo(x,y);
-      bctx.lineTo(x+(Math.random()-0.5)*3, y-3-Math.random()*3);
+      bctx.lineTo(x+(rnd()-0.5)*3, y-3-rnd()*3);
       bctx.stroke();
     }
   }
@@ -749,7 +958,7 @@
     let guard = 0;
     while(list.length<count && guard<count*25){
       guard++;
-      const c = Math.floor(Math.random()*COLS), r = Math.floor(Math.random()*ROWS);
+      const c = Math.floor(rnd()*COLS), r = Math.floor(rnd()*ROWS);
       if(isPathCell(c,r)) continue;
       if(list.some(p=>p.c===c&&p.r===r)) continue;
       if(avoid.some(a=>Math.hypot(a.c-c,a.r-r)<a.radius)) continue;
@@ -760,7 +969,7 @@
 
   function paintTree(bctx,x,y,scale){
     bctx.save();
-    bctx.translate(x,y);
+    bctx.translate(x,y); upright(bctx);
     bctx.scale(scale,scale);
     bctx.fillStyle = "rgba(10,10,6,0.3)";
     bctx.beginPath(); bctx.ellipse(2,4,15,6,0,0,Math.PI*2); bctx.fill();
@@ -776,7 +985,7 @@
 
   function paintRock(bctx,x,y,scale){
     bctx.save();
-    bctx.translate(x,y); bctx.scale(scale,scale);
+    bctx.translate(x,y); upright(bctx); bctx.scale(scale,scale);
     bctx.fillStyle = "rgba(10,10,6,0.25)";
     bctx.beginPath(); bctx.ellipse(2,5,12,5,0,0,Math.PI*2); bctx.fill();
     const grad = bctx.createLinearGradient(-10,-10,10,8);
@@ -791,13 +1000,13 @@
 
   function paintTuft(bctx,x,y,scale){
     bctx.save();
-    bctx.translate(x,y); bctx.scale(scale,scale);
+    bctx.translate(x,y); upright(bctx); bctx.scale(scale,scale);
     bctx.strokeStyle = "#546b38"; bctx.lineWidth = 1.4; bctx.lineCap = "round";
     for(let i=0;i<5;i++){
       const a = (i-2)*0.35;
       bctx.beginPath();
       bctx.moveTo(0,4);
-      bctx.quadraticCurveTo(Math.sin(a)*4, -4, Math.sin(a)*7, -10-Math.random()*3);
+      bctx.quadraticCurveTo(Math.sin(a)*4, -4, Math.sin(a)*7, -10-rnd()*3);
       bctx.stroke();
     }
     bctx.restore();
@@ -826,20 +1035,20 @@
     // small tree clusters, concentrated rather than uniformly scattered,
     // so they read as forest edges instead of clutter in the play area
     pickFreeCells(6, avoid).forEach(seed=>{
-      const n = 2+Math.floor(Math.random()*3);
+      const n = 2+Math.floor(rnd()*3);
       for(let i=0;i<n;i++){
-        const x = seed.c*TILE+TILE/2+(Math.random()-0.5)*TILE*1.6;
-        const y = seed.r*TILE+TILE/2+(Math.random()-0.5)*TILE*1.6;
-        paintTree(bctx, x, y, 0.85+Math.random()*0.4);
+        const x = seed.c*TILE+TILE/2+(rnd()-0.5)*TILE*1.6;
+        const y = seed.r*TILE+TILE/2+(rnd()-0.5)*TILE*1.6;
+        paintTree(bctx, x, y, 0.85+rnd()*0.4);
       }
     });
     // rocks
     pickFreeCells(8, avoid).forEach(p=>{
-      paintRock(bctx, p.c*TILE+TILE/2+(Math.random()-0.5)*16, p.r*TILE+TILE/2+(Math.random()-0.5)*16, 0.8+Math.random()*0.5);
+      paintRock(bctx, p.c*TILE+TILE/2+(rnd()-0.5)*16, p.r*TILE+TILE/2+(rnd()-0.5)*16, 0.8+rnd()*0.5);
     });
     // tall-grass tufts for close-up variety
     pickFreeCells(26, avoid).forEach(p=>{
-      paintTuft(bctx, p.c*TILE+TILE/2+(Math.random()-0.5)*24, p.r*TILE+TILE/2+(Math.random()-0.5)*24, 0.8+Math.random()*0.6);
+      paintTuft(bctx, p.c*TILE+TILE/2+(rnd()-0.5)*24, p.r*TILE+TILE/2+(rnd()-0.5)*24, 0.8+rnd()*0.6);
     });
     // one small pond tucked in a free corner
     const pondSpot = pickFreeCells(1, avoid)[0];
@@ -886,9 +1095,10 @@
   function drawTorches(){
     for(const tp of TORCH_POINTS){
       const flicker = 0.75 + 0.2*Math.sin(now*9+tp.seed) + 0.12*Math.sin(now*23+tp.seed*3);
-      drawGlow(GLOW_AMBER, tp.x, tp.y-4, 20*flicker, 0.5*flicker);
+      const gl = sv(0,-4);
+      drawGlow(GLOW_AMBER, tp.x+gl.x, tp.y+gl.y, 20*flicker, 0.5*flicker);
       ctx.save();
-      ctx.translate(tp.x, tp.y);
+      ctx.translate(tp.x, tp.y); upright(ctx);
       ctx.fillStyle = "#e0ac57";
       ctx.beginPath();
       ctx.moveTo(0,6);
@@ -944,18 +1154,19 @@
   }
 
   function updateParticles(dt){
+    const grav = sv(0, 260);   // faiscas caem pro pe da tela, nao pro +y do mundo
     for(const p of particles){
       if(!p.active) continue;
       p.t += dt;
       if(p.t >= p.life){ p.active = false; continue; }
       if(p.type==="spark"){
-        p.x += p.vx*dt; p.y += p.vy*dt; p.vy += 260*dt;
-      } else if(p.type==="ember"){
         p.x += p.vx*dt; p.y += p.vy*dt;
-      } else if(p.type==="fog"){
-        p.x += p.vx*dt;
+        p.vx += grav.x*dt; p.vy += grav.y*dt;
+      } else if(p.type==="ember" || p.type==="fog"){
+        p.x += p.vx*dt; p.y += p.vy*dt;
       } else if(p.type==="dmgtext"){
-        p.y += p.vy*dt; p.vy *= 0.9;
+        p.x += p.vx*dt; p.y += p.vy*dt;
+        p.vx *= 0.9; p.vy *= 0.9;
       }
     }
   }
@@ -978,12 +1189,14 @@
       } else if(p.type==="muzzle"){
         drawGlow(p.glow, p.x, p.y, p.size*(1-lr*0.3), 0.8*(1-lr));
       } else if(p.type==="dmgtext"){
+        ctx.save();
         ctx.globalAlpha = Math.max(0,1-lr);
         ctx.fillStyle = p.color;
         ctx.font = "700 12px Archivo, sans-serif";
         ctx.textAlign = "center";
-        ctx.fillText(p.text, p.x, p.y);
-        ctx.globalAlpha = 1;
+        ctx.translate(p.x, p.y); upright(ctx);
+        ctx.fillText(p.text, 0, 0);
+        ctx.restore();
       } else if(p.type==="ember"){
         const env = Math.min(1,lr*3) * Math.max(0,1-lr);
         drawGlow(GLOW_AMBER, p.x, p.y, p.size*3, 0.5*env);
@@ -1005,16 +1218,21 @@
     emberTimer -= dt;
     if(emberTimer<=0){
       emberTimer = 0.6 + Math.random()*0.5;
-      spawnParticle("ember", Math.random()*CANVAS_W, CANVAS_H+6, {
-        vx:(Math.random()-0.5)*6, vy:-(14+Math.random()*10),
+      // nasce na borda de baixo da *vista* e sobe na tela, gire ou nao
+      const ep = v2w(Math.random()*viewW, viewH+6);
+      const ev = sv((Math.random()-0.5)*6, -(14+Math.random()*10));
+      spawnParticle("ember", ep.x, ep.y, {
+        vx:ev.x, vy:ev.y,
         life:5+Math.random()*2.5, size:1.4+Math.random()*1.3, layer:"back"
       });
     }
     fogTimer -= dt;
     if(fogTimer<=0){
       fogTimer = 5 + Math.random()*3;
-      spawnParticle("fog", -60, 60+Math.random()*300, {
-        vx:7+Math.random()*5, life:12+Math.random()*6,
+      const fp = v2w(-60, 60+Math.random()*Math.max(60, viewH-120));
+      const fv = sv(7+Math.random()*5, 0);
+      spawnParticle("fog", fp.x, fp.y, {
+        vx:fv.x, vy:fv.y, life:12+Math.random()*6,
         size:90+Math.random()*40, alpha:0.06+Math.random()*0.04, layer:"back"
       });
     }
@@ -1530,7 +1748,9 @@
     const t = TOWER_TYPES[key];
     const idle = Math.sin(animPhase*1.6);
     c.save();
-    c.translate(x, y+idle*0.3);
+    c.translate(x, y);
+    if(c===ctx) upright(c);   // as miniaturas das cartas ja sao desenhadas em pe
+    c.translate(0, idle*0.3);
     // base
     c.fillStyle = "#2a251d";
     c.beginPath(); c.ellipse(0, 16, 17, 7, 0, 0, Math.PI*2); c.fill();
@@ -1606,7 +1826,9 @@
     }
 
     c.save();
-    c.translate(e.x, e.y-lift);
+    c.translate(e.x, e.y);
+    if(c===ctx) upright(c);
+    c.translate(0, -lift);    // a altura do voo e sempre "pra cima" na tela
 
     if(e.slowUntil > now){
       const ringY = -def.topOffset*scale*0.55;
@@ -1622,16 +1844,16 @@
       c.drawImage(enemyFlashSprites[e.type], sx, 0, ENEMY_FRAME_W, ENEMY_FRAME_H, dx, dy, dw, dh);
       c.globalAlpha = 1;
     }
-    c.restore();
 
     // hp bar, anchored above this type's actual sprite height
     const w = def.radius*2.1;
-    const barY = e.y - lift - def.topOffset*scale - 6;
+    const barY = -def.topOffset*scale - 6;
     const ratio = Math.max(0, e.hp/e.maxHp);
     c.fillStyle = "rgba(0,0,0,.55)";
-    c.fillRect(e.x-w/2, barY, w, 4);
+    c.fillRect(-w/2, barY, w, 4);
     c.fillStyle = ratio>0.5 ? "#6fa88d" : ratio>0.25 ? "#e0ac57" : "#c94842";
-    c.fillRect(e.x-w/2, barY, w*ratio, 4);
+    c.fillRect(-w/2, barY, w*ratio, 4);
+    c.restore();
   }
 
   // ============================================================
@@ -1679,6 +1901,20 @@
   // ============================================================
   // HUD helpers
   // ============================================================
+
+  // Rotulos dos botoes de acao. No celular o espaco horizontal e curto, entao
+  // eles encolhem pra uma palavra / um icone (ver .is-compact no CSS).
+  function refreshActionLabels(){
+    const sw = document.getElementById("btn-start-wave");
+    if(ended)            sw.textContent = "Fim de jogo";
+    else if(waveInProgress) sw.textContent = compactUI ? "Em curso…" : "Onda em curso…";
+    else                 sw.textContent = (compactUI ? "Onda " : "Convocar Onda ")+Math.min(wave+1, MAX_WAVE);
+    document.getElementById("btn-pause").textContent =
+      compactUI ? (paused ? "Retomar" : "Pausa") : (paused ? "Continuar" : "Pausar");
+    document.getElementById("btn-speed").textContent =
+      (compactUI ? "×" : "Velocidade ×")+speedMul;
+  }
+
   function updateHUD(){
     document.getElementById("stat-gold").textContent = gold;
     document.getElementById("stat-lives").textContent = lives;
@@ -1731,14 +1967,27 @@
   // ============================================================
   function canvasToGrid(evt){
     const rect = canvas.getBoundingClientRect();
-    const x = (evt.clientX-rect.left) * (CANVAS_W/rect.width);
-    const y = (evt.clientY-rect.top) * (CANVAS_H/rect.height);
-    return {c: Math.floor(x/TILE), r: Math.floor(y/TILE), x, y};
+    const vx = (evt.clientX-rect.left) * (viewW/rect.width);
+    const vy = (evt.clientY-rect.top) * (viewH/rect.height);
+    const w = v2w(vx, vy);
+    return {c: Math.floor(w.x/TILE), r: Math.floor(w.y/TILE), x:w.x, y:w.y};
   }
 
-  canvas.addEventListener("mousemove", evt => {
+  // No mouse o alvo segue o ponteiro; no toque ele aparece no dedo enquanto
+  // o dedo esta na tela e some depois, pra nao deixar um fantasma parado.
+  let touchAiming = false;
+  canvas.addEventListener("pointermove", evt => {
+    if(evt.pointerType === "touch" && !touchAiming) return;
     hoverCell = canvasToGrid(evt);
   });
+  canvas.addEventListener("pointerdown", evt => {
+    if(evt.pointerType === "touch"){ touchAiming = true; }
+    hoverCell = canvasToGrid(evt);
+  });
+  canvas.addEventListener("pointerup", evt => {
+    if(evt.pointerType === "touch"){ touchAiming = false; hoverCell = null; }
+  });
+  canvas.addEventListener("pointercancel", () => { touchAiming = false; hoverCell = null; });
   canvas.addEventListener("mouseleave", () => hoverCell = null);
 
   canvas.addEventListener("click", evt => {
@@ -1815,7 +2064,7 @@
     spawnInterval = Math.max(0.32, 0.65 - wave*0.02);
     waveInProgress = true;
     document.getElementById("btn-start-wave").disabled = true;
-    document.getElementById("btn-start-wave").textContent = "Onda em curso…";
+    refreshActionLabels();
     showToast("Onda "+wave+(wave%5===0 ? " — Chefe de Guerra!" : ""));
     updateHUD();
     playSfx("wave");
@@ -1850,7 +2099,7 @@
         victory();
       } else {
         document.getElementById("btn-start-wave").disabled = false;
-        document.getElementById("btn-start-wave").textContent = "Convocar Onda "+(wave+1);
+        refreshActionLabels();
       }
     }
   }
@@ -1887,13 +2136,14 @@
       if(!target) continue;
       tw.cooldown = def.rate;
       tw.fireFlash = 1;
+      const muzzle = sv(0,-20);   // a boca do canhao fica acima da torre na tela
       projectiles.push({
-        x:tw.x, y:tw.y-20, tx:target.x, ty:target.y,
+        x:tw.x+muzzle.x, y:tw.y+muzzle.y, tx:target.x, ty:target.y,
         speed:def.projSpeed, dmg:def.dmg, color:TOWER_TYPES[tw.type].color,
         splash:def.splash||0, slow: def.slow||null, canHitFlying: def.canHitFlying||false,
         targetId: target.id
       });
-      spawnParticle("muzzle", tw.x, tw.y-20, {
+      spawnParticle("muzzle", tw.x+muzzle.x, tw.y+muzzle.y, {
         life:0.12, size:16, layer:"front",
         glow: tw.type==="mage" ? GLOW_GREEN : GLOW_AMBER
       });
@@ -1930,8 +2180,10 @@
         e.hp -= dealt;
         e.hitFlash = 1;
         if(p.slow){ e.slowUntil = now+p.slow.duration; e.slowFactor = p.slow.factor; }
-        spawnParticle("dmgtext", e.x, e.y-def.topOffset*ENEMY_DRAW_SCALE-14, {
-          vy:-26, life:0.7, color:"#ece3cf", text:String(dealt), layer:"front"
+        const dOff = sv(0, -def.topOffset*ENEMY_DRAW_SCALE-14);
+        const dVel = sv(0, -26);
+        spawnParticle("dmgtext", e.x+dOff.x, e.y+dOff.y, {
+          vx:dVel.x, vy:dVel.y, life:0.7, color:"#ece3cf", text:String(dealt), layer:"front"
         });
         for(let k=0;k<3;k++){
           const ang = Math.random()*Math.PI*2, spd = 30+Math.random()*50;
@@ -2017,7 +2269,10 @@
   // Main render
   // ============================================================
   function render(){
-    ctx.clearRect(0,0,CANVAS_W,CANVAS_H);
+    // buffer -> vista -> mundo (a rotacao entra aqui, uma vez por quadro)
+    ctx.setTransform(pixScale,0,0,pixScale,0,0);
+    ctx.clearRect(0,0,viewW,viewH);
+    if(ROT){ ctx.translate(viewW,0); ctx.rotate(ROT_ANGLE); }
     ctx.drawImage(bg,0,0);
 
     // drifting cloud-shadow layer over the baked terrain (cheap: 2 drawImage calls)
@@ -2127,17 +2382,17 @@
   document.getElementById("btn-pause").addEventListener("click", ()=>{
     if(ended) return;
     paused = !paused;
-    document.getElementById("btn-pause").textContent = paused ? "Continuar" : "Pausar";
+    refreshActionLabels();
     document.getElementById("overlay-pause").classList.toggle("hidden", !paused);
   });
   document.getElementById("btn-resume").addEventListener("click", ()=>{
     paused = false;
-    document.getElementById("btn-pause").textContent = "Pausar";
+    refreshActionLabels();
     document.getElementById("overlay-pause").classList.add("hidden");
   });
   document.getElementById("btn-speed").addEventListener("click", ()=>{
     speedMul = speedMul===1 ? 2 : 1;
-    document.getElementById("btn-speed").textContent = "Velocidade ×"+speedMul;
+    refreshActionLabels();
   });
   document.getElementById("btn-mute").addEventListener("click", (e)=>{
     muted = !muted;
@@ -2154,11 +2409,28 @@
   // ============================================================
   // Init
   // ============================================================
+
+  // O tabuleiro e redimensionado a cada mudanca de viewport: girar o
+  // aparelho, a barra do navegador aparecer/sumir, redimensionar a janela.
+  let layoutPending = 0;
+  function relayout(){
+    if(layoutPending) return;
+    layoutPending = requestAnimationFrame(()=>{ layoutPending = 0; layout(); });
+  }
+  window.addEventListener("resize", relayout);
+  window.addEventListener("orientationchange", relayout);
+  if(window.visualViewport){
+    window.visualViewport.addEventListener("resize", relayout);
+  }
+  // as fontes chegam depois e mudam a altura da barra de topo
+  if(document.fonts && document.fonts.ready) document.fonts.ready.then(relayout);
+
   const best = loadBest();
   if(best>0){
     document.getElementById("best-wave-line").style.display = "block";
     document.getElementById("best-wave-value").textContent = "onda "+best+" de "+MAX_WAVE;
   }
   resetState();
+  layout();   // depois de resetState: os rotulos ja tem estado de verdade
 })();
 </script>
