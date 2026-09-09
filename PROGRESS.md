@@ -2,7 +2,15 @@
 
 Tower defense medieval, arquivo único autocontido (`index.html`: HTML+CSS+JS
 inline, sem build, sem dependências além da folha de fontes do Google Fonts).
-Publicado como Claude Artifact: https://claude.ai/code/artifact/b0742332-e8be-417e-a8fa-2e358a728366
+
+Duas formas de jogar, ambas sempre na versão mais recente:
+- **Claude Artifact** (exige login na conta Claude):
+  https://claude.ai/code/artifact/b0742332-e8be-417e-a8fa-2e358a728366
+- **GitHub Pages** (público, sem login — pedido do usuário pra abrir no Safari
+  do celular sem precisar de conta): https://kt3746.github.io/Claude-Tower-Defense/
+  Publicado por `.github/workflows/pages.yml`, que roda a cada push em
+  `claude/progress-md-context-kj12ok` (não mexe em `main`). Ver a seção
+  "GitHub Pages" mais abaixo antes de mexer nesse workflow.
 
 Todo o histórico abaixo está mesclado na `main`. Se você (uma sessão nova) foi
 chamado para continuar este projeto, comece lendo `index.html` inteiro — são
@@ -191,3 +199,34 @@ chamado para continuar este projeto, comece lendo `index.html` inteiro — são
 - Não fazer PR/merge sem o usuário pedir — mas ele já pediu (e aprovou) uma
   vez pra trazer tudo até aqui pra `main`, então commits diretos em `main`
   pra trabalho já testado e aprovado têm sido aceitos nesta conversa.
+
+## GitHub Pages (acesso sem login)
+
+O usuário pediu isso porque o Artifact exige conta Claude e ele queria abrir
+no Safari do celular sem logar em nada. `.github/workflows/pages.yml` cobre
+o caso, mas a configuração tem duas pegadinhas que já custaram 3 rodadas de
+tentativa e erro — se for mexer nisso de novo, já sai sabendo:
+
+1. **`actions/configure-pages@v5` não cria o site sozinho por padrão.** Sem
+   `enablement: true`, ele só tenta *ler* um site que já existe e falha com
+   404 se o Pages nunca foi ativado. Mesmo com `enablement: true`, a
+   primeira ativação **não pode ser feita pelo `GITHUB_TOKEN` do Actions** —
+   dá "Resource not accessible by integration" na criação, sempre, sem
+   exceção. Alguém com acesso à conta precisa entrar uma vez em
+   Settings → Pages → Build and deployment → Source e escolher
+   "GitHub Actions" manualmente. Depois disso o token passa a bastar pra
+   tudo (deploys seguintes funcionam sozinhos).
+2. **O ambiente `github-pages` que o GitHub cria nesse passo vem com uma
+   regra de proteção que só libera deploy a partir da branch padrão do
+   repo** (`main`, aqui) — então mesmo com o Pages ativado, publicar a
+   partir de `claude/progress-md-context-kj12ok` falhava na hora (sem
+   runner, sem logs, só "Branch '...' is not allowed to deploy to
+   github-pages due to environment protection rules" na página do run).
+   Precisou de um segundo ajuste manual: Settings → Environments →
+   github-pages → Deployment branches and tags → trocar pra
+   "No restriction" (ou adicionar a branch explicitamente).
+
+Os dois ajustes já foram feitos pelo usuário nesta conversa — não deveriam
+ser necessários de novo, a menos que o repo seja recriado do zero ou o
+workflow passe a rodar numa branch nova. Se `pages.yml` começar a falhar,
+comece descartando essas duas causas antes de mexer no YAML.
