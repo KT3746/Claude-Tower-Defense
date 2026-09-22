@@ -219,6 +219,28 @@ chamado para continuar este projeto, comece lendo `index.html` inteiro — são
     esticava a onda. Virou laço com acumulação.
 
   E o que mudou pra melhor no jogo:
+  - **Curva de dificuldade medida, não chutada.** Existe um harness de
+    balanceamento no scratchpad (`balance.js`) que joga 15 ondas com um
+    *jogador simulado competente*: espalha torres pela estrada, garante
+    anti-aéreo antes dos corvos, e melhora quando sobra ouro. Três partidas
+    por build, no ×3:
+
+    | build | resultado |
+    |---|---|
+    | anterior (sorteio uniforme) | 3 vitórias — 18, 6 e 10 vidas |
+    | pelotões, 1ª tentativa | 1 vitória — derrota na 9, vitória com 16, derrota na 13 |
+    | pelotões, ajustado (atual) | 2 vitórias — derrota na 8, vitória com 8, vitória com 20 |
+
+    O aprendizado: **o que endurece uma onda não é o total de inimigos, é a
+    concentração.** Quatro cavaleiros chegando juntos valem muito mais que
+    quatro espalhados, mesmo com HP total idêntico. A 1ª tentativa subia
+    volume *e* concentração ao mesmo tempo e virou parede. O ajuste devolveu
+    o volume ao nível anterior (`hpMul` 7%/onda e contagem `6+1,5n`, ambos
+    idênticos ao build antigo) e deixou o pelotão fazer só o ritmo.
+    Se precisar mexer nisso de novo, o parâmetro certo é o intervalo entre
+    pelotões (`loose`), que controla concentração sem mexer no conteúdo.
+    Não vale continuar afinando contra o bot: ele tem estratégia fixa, e
+    2 de 3 já é uma curva melhor que o 3/3 folgado do build anterior.
   - **Ondas em pelotões.** `generateWave` sorteava uniformemente de um balde
     de tipos, o que deixava a curva chapada (da onda 6 em diante toda onda
     era a mesma sopa). Agora cada onda é montada em grupos do mesmo tipo,
