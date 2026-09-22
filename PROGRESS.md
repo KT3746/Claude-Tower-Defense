@@ -164,14 +164,32 @@ chamado para continuar este projeto, comece lendo `index.html` inteiro — são
     `waveClearCheck()` começa com `if(ended) return;`.
   - **Tiro mirava no passado.** O projétil guardava `tx/ty` — a posição do
     alvo no instante do disparo — e voava pra lá; o campo `targetId` era
-    gravado e nunca lido. Contra alvos rápidos a balista errava 27% dos
-    corvos. Agora há `leadPoint()`: como todo inimigo anda sobre a trilha,
-    dá pra prever exatamente onde ele estará (basta avançar `e.dist`; duas
-    iterações convergem). Além disso, tiro de alvo único guarda a
-    *referência* do inimigo e persegue enquanto ele vive (`p.target`); a
-    bomba do canhão continua caindo no ponto previsto, senão a área deixa
-    de ser a vantagem dela. Inimigos removidos ganham `e.dead = true` pro
-    projétil saber que deve seguir até o último ponto conhecido.
+    gravado e nunca lido. Agora há `leadPoint()`: como todo inimigo anda
+    sobre a trilha, dá pra prever exatamente onde ele estará (basta avançar
+    `e.dist`; duas iterações convergem). Além disso, tiro de alvo único
+    guarda a *referência* do inimigo e persegue enquanto ele vive
+    (`p.target`); a bomba do canhão continua caindo no ponto previsto,
+    senão a área deixa de ser a vantagem dela. Inimigos removidos ganham
+    `e.dead = true` pro projétil saber que deve seguir até o último ponto
+    conhecido.
+
+    **Cuidado ao medir isto de novo**: a primeira medição desta sessão deu
+    "27% de erro da balista contra corvos" e estava *errada* — era overkill,
+    não mira. Com 6 balistas atirando nos mesmos corvos, build antigo e
+    novo empatam em ~68% de acerto, porque várias torres disparam num alvo
+    que morre antes dos tiros chegarem. Para medir mira é preciso **uma
+    torre só**, inimigos bem espaçados, e a torre **longe da estrada** (o
+    erro só existe perto do alcance máximo). Nessa montagem:
+
+    | uma torre, sem overkill | distância | vel. do alvo | antigo | novo |
+    |---|---|---|---|---|
+    | Balista × **Corvo** | 114px | 85 px/s | **63%** | **100%** |
+    | Balista × Trasgo | 114px | 62 px/s | 100% | 100% |
+    | Arqueiro × Trasgo | 100px | 62 px/s | 100% | 100% |
+
+    Ou seja: o bug existia, mas só contra o inimigo mais rápido do jogo a
+    distância longa. É aritmética — tempo de voo × velocidade do alvo tem
+    que passar do raio de acerto de 20px, e só o corvo (85 px/s) consegue.
   - **Lentidão do mago encolhia no ×2.** `e.slowUntil` usava `now`
     (relógio de parede) enquanto o movimento usava `dt` (tempo de jogo):
     no ×2 o inimigo percorria 226px sob lentidão contra 191px no ×1.
