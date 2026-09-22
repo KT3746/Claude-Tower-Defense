@@ -873,7 +873,7 @@
     const w = {goblin: Math.max(1.2, 10 - n*0.62)};
     if(n>=3) w.orc    = Math.min(8, (n-2)*1.5);
     if(n>=4) w.raven  = Math.min(5, (n-3)*1.1);
-    if(n>=6) w.knight = Math.min(7, (n-5)*1.35);
+    if(n>=6) w.knight = Math.min(5.5, (n-5)*1.0);
     return w;
   }
   function pickWeighted(w){
@@ -886,17 +886,17 @@
   }
   function generateWave(n){
     const w = waveWeights(n);
-    const hpMul = 1 + (n-1)*0.08;
-    const tight = Math.max(0.17, 0.34 - n*0.008);   // dentro do pelotao
-    const loose = Math.max(0.55, 1.10 - n*0.020);   // entre pelotoes
-    let budget = 6 + Math.floor(n*1.6);
+    const hpMul = 1 + (n-1)*0.07;
+    const tight = Math.max(0.22, 0.38 - n*0.008);   // dentro do pelotao
+    const loose = Math.max(0.70, 1.25 - n*0.020);   // entre pelotoes
+    let budget = 6 + Math.floor(n*1.5);
     const list = [];
     let first = true;
     while(budget > 0){
       const type = pickWeighted(w);
       // corvo vem em revoada; cavaleiro em parede curta; o resto em grupo medio
-      const size = Math.min(budget, type==="raven" ? 3+Math.floor(Math.random()*3)
-                                  : type==="knight" ? 2+Math.floor(Math.random()*2)
+      const size = Math.min(budget, type==="raven" ? 2+Math.floor(Math.random()*3)
+                                  : type==="knight" ? 2
                                   : 2+Math.floor(Math.random()*3));
       for(let i=0;i<size;i++){
         list.push({type, hpMul, gap: (i===0 && !first) ? loose : tight});
