@@ -14,9 +14,9 @@ Duas formas de jogar, ambas sempre na versão mais recente:
 
 Todo o histórico abaixo está mesclado na `main`. Se você (uma sessão nova) foi
 chamado para continuar este projeto, comece lendo `index.html` inteiro — são
-~2070 linhas, um único IIFE comentado por seções — e depois volte aqui.
+~2900 linhas, um único IIFE comentado por seções — e depois volte aqui.
 
-## O que já existe (v1 + v2, incrementos 1 a 5c)
+## O que já existe (v1 + v2, incrementos 1 a 6)
 
 - **v1**: jogo completo e jogável — grade 18×10, estrada única sinuosa,
   3 torres (Arqueiro/Canhão/Mago), 4 inimigos (Trasgo/Orc/Cavaleiro
@@ -154,6 +154,71 @@ chamado para continuar este projeto, comece lendo `index.html` inteiro — são
   aqui por rodar uma única vez) e uma linha de luz fina por dentro do
   contorno escuro — o par mais barato da mesma ideia.
 
+- **Incremento 6 — caça a bugs + qualidade**: varredura completa do arquivo,
+  cada bug reproduzido num navegador headless com uma cópia instrumentada
+  (`window.__dbg`) antes e depois da correção. O que estava quebrado:
+  - **Derrota virava vitória.** Morrer para o *último* inimigo da onda 15
+    chamava `defeat()` dentro de `updateEnemies()` e, no mesmo quadro,
+    `waveClearCheck()` via a lista vazia e chamava `victory()` por cima:
+    "Cerco repelido!" com 0 vidas e ainda +230 de ouro de bônus. Agora
+    `waveClearCheck()` começa com `if(ended) return;`.
+  - **Tiro mirava no passado.** O projétil guardava `tx/ty` — a posição do
+    alvo no instante do disparo — e voava pra lá; o campo `targetId` era
+    gravado e nunca lido. Contra alvos rápidos a balista errava 27% dos
+    corvos. Agora há `leadPoint()`: como todo inimigo anda sobre a trilha,
+    dá pra prever exatamente onde ele estará (basta avançar `e.dist`; duas
+    iterações convergem). Além disso, tiro de alvo único guarda a
+    *referência* do inimigo e persegue enquanto ele vive (`p.target`); a
+    bomba do canhão continua caindo no ponto previsto, senão a área deixa
+    de ser a vantagem dela. Inimigos removidos ganham `e.dead = true` pro
+    projétil saber que deve seguir até o último ponto conhecido.
+  - **Lentidão do mago encolhia no ×2.** `e.slowUntil` usava `now`
+    (relógio de parede) enquanto o movimento usava `dt` (tempo de jogo):
+    no ×2 o inimigo percorria 226px sob lentidão contra 191px no ×1.
+    Existem agora dois relógios de propósito: `now` só pra enfeite (tremular
+    de tocha) e `gameTime`, que anda com `dt` — acelera no ×2/×3 e **congela
+    na pausa**. Toda regra usa `gameTime`.
+  - **Lentidão fraca aliviava a forte.** Um mago nível 1 acertando depois de
+    um nível 2 rebaixava o fator de 0.35 pra 0.45. Agora fica sempre o fator
+    mais forte e o prazo mais longo.
+  - **"Melhorar" travado.** O botão só era reavaliado ao *selecionar* a
+    torre: com a torre já selecionada ele continuava cinza mesmo depois do
+    ouro chegar. `updateHUD()` agora reemite o painel da torre selecionada.
+  - **Arrastar construía torre.** O `click` do canvas não tinha limiar de
+    arrasto — passar o dedo pelo tabuleiro com uma torre armada gastava
+    ouro. Agora `pointerdown` registra a origem e um deslocamento acima de
+    12px invalida o clique.
+  - **Prévia verde fora do tabuleiro.** A célula fora da grade era desenhada
+    como válida e o toque não construía nada, sem explicação. A checagem de
+    limites entrou na expressão de validade do `render()`.
+  - **`card.style.opacity` inline** vencia o `.tower-card:disabled` do CSS —
+    virou a classe `.unaffordable`.
+  - **`dpr` era lido uma vez na carga**: mudar o zoom do navegador ou
+    arrastar a janela pra outro monitor deixava o canvas borrado. Agora é
+    reavaliado em cada `layout()`.
+  - **`spawnFromQueue` descartava a sobra** (`spawnTimer = spawnInterval`
+    em vez de `+=`) e só deixava nascer um inimigo por quadro — no ×2 isso
+    esticava a onda. Virou laço com acumulação.
+
+  E o que mudou pra melhor no jogo:
+  - **Ondas em pelotões.** `generateWave` sorteava uniformemente de um balde
+    de tipos, o que deixava a curva chapada (da onda 6 em diante toda onda
+    era a mesma sopa). Agora cada onda é montada em grupos do mesmo tipo,
+    com peso variando ao longo do cerco (`waveWeights`): trasgo domina no
+    começo e some no fim, orc e cavaleiro crescem, corvo vem em revoada de
+    3–5. O intervalo passou a ser por inimigo (`gap`): rajada apertada
+    dentro do pelotão, respiro entre pelotões. A onda 15 fecha com **dois**
+    Chefes de Guerra.
+  - **Anúncio da onda** diz a composição ("Onda 7 — orcs e corvos de
+    guerra"), pra dar pra decidir onde gastar o ouro antes de convocar.
+  - **Clarão vermelho** quando um inimigo atravessa o portão — perder vida
+    era sinalizado só pelo número no topo, fácil de não ver no meio da
+    briga. Respeita `prefers-reduced-motion`.
+  - **Contador de restantes** no botão da onda em curso.
+  - **Velocidade ×3** (era só ×1/×2) e atalhos de teclado novos: **Espaço**
+    convoca a onda ou pausa, **U** melhora, **X** vende (1–4 e Esc já
+    existiam). A legenda do rodapé lista os atalhos no desktop.
+
 ## O que falta (próximos incrementos combinados com o usuário)
 
 **Ainda dentro do Incremento 4 — conteúdo novo:**
@@ -174,6 +239,12 @@ chamado para continuar este projeto, comece lendo `index.html` inteiro — são
 - Balanceamento de custo/dano/HP do conteúdo novo e da curva de ondas.
 - Micro-interações de interface (hover/transição, feedback de ouro
   insuficiente).
+- Prioridade de alvo por torre (primeiro / mais forte / mais próximo):
+  chegou a ser considerada no Incremento 6 e ficou de fora porque a linha
+  extra no painel encolhe o tabuleiro no retrato — precisa de um lugar que
+  não custe altura.
+- O som ainda é um oscilador só por efeito; dá pra enriquecer sem sair do
+  WebAudio procedural (ruído filtrado pro canhão, duas vozes na vitória).
 
 ## Coisas que uma sessão nova precisa saber
 

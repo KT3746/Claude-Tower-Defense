@@ -265,6 +265,20 @@
   }
   .overlay-card .btn--primary{box-shadow:var(--lift-1), var(--hairline-top);}
 
+  /* Clarao vermelho quando um inimigo atravessa o portao: perder vida era
+     sinalizado so pelo numero no topo, facil de nao ver no meio da briga. */
+  .breach-flash{
+    position:absolute;
+    inset:var(--frame-pad);
+    pointer-events:none;
+    opacity:0;
+    border-radius:calc(var(--radius) - 2px);
+    background:radial-gradient(ellipse at center, rgba(201,72,66,0) 58%, rgba(176,48,42,.85) 100%);
+  }
+  .breach-flash.on{animation:breach .45s ease-out;}
+  @keyframes breach{0%{opacity:0} 14%{opacity:.9} 100%{opacity:0}}
+  @media (prefers-reduced-motion: reduce){ .breach-flash.on{animation:none;} }
+
   .toast{
     position:absolute;
     top:18px;
@@ -347,6 +361,8 @@
     box-shadow:0 0 0 1px var(--gold-bright) inset, 0 0 14px -4px rgba(240,185,95,.5);
   }
   .tower-card:disabled{opacity:.45;cursor:not-allowed;}
+  /* sem ouro: esmaece o cartao sem usar style inline, pra nao brigar com :disabled */
+  .tower-card.unaffordable{opacity:.55;}
   .tower-card canvas{flex:0 0 auto;filter:drop-shadow(0 2px 3px rgba(0,0,0,.5));}
   .tower-card .tc-info{flex:1;min-width:0;}
   .tower-card .tc-name{
@@ -652,6 +668,7 @@
     <div class="battlefield-frame">
       <canvas id="game" width="900" height="500" aria-label="Campo de batalha"></canvas>
 
+      <div class="breach-flash" id="breach-flash" aria-hidden="true"></div>
       <div class="toast" id="wave-toast"></div>
 
       <div class="overlay" id="overlay-start">
@@ -720,6 +737,7 @@
     <span><b>Chefe de Guerra</b> — a cada 5 ondas</span>
     <span><b>Corvo de Guerra</b> — voador, só a Balista alcança</span>
     <span>Clique numa torre construída para melhorá-la ou vendê-la</span>
+    <span class="legend-keys"><b>1–4</b> torres · <b>Espaço</b> onda/pausa · <b>U</b> melhorar · <b>X</b> vender · <b>Esc</b> cancelar</span>
   </footer>
 </div>
 
@@ -835,27 +853,75 @@
   };
 
   const ENEMY_TYPES = {
-    goblin:{name:"Trasgo", hp:18, speed:62, armor:0, reward:5, dmg:1, color:"#5c7a3e", dark:"#3e5629", radius:11, topOffset:47},
-    orc:{name:"Orc", hp:48, speed:44, armor:1, reward:9, dmg:2, color:"#7a6a35", dark:"#584c22", radius:15, topOffset:61},
-    knight:{name:"Cavaleiro Renegado", hp:120, speed:34, armor:3, reward:18, dmg:3, color:"#8b8578", dark:"#5f594c", radius:16, topOffset:75},
-    warlord:{name:"Chefe de Guerra", hp:420, speed:28, armor:4, reward:60, dmg:6, color:"#7a2020", dark:"#4d1414", radius:24, topOffset:89},
-    raven:{name:"Corvo de Guerra", hp:30, speed:85, armor:0, reward:10, dmg:2, color:"#4a4a52", dark:"#2b2b31", radius:12, topOffset:44, flying:true, flyHeight:34}
+    goblin:{name:"Trasgo", hp:18, speed:62, armor:0, reward:5, dmg:1, color:"#5c7a3e", dark:"#3e5629", radius:11, topOffset:47, plural:"trasgos"},
+    orc:{name:"Orc", hp:48, speed:44, armor:1, reward:9, dmg:2, color:"#7a6a35", dark:"#584c22", radius:15, topOffset:61, plural:"orcs"},
+    knight:{name:"Cavaleiro Renegado", hp:120, speed:34, armor:3, reward:18, dmg:3, color:"#8b8578", dark:"#5f594c", radius:16, topOffset:75, plural:"cavaleiros renegados"},
+    warlord:{name:"Chefe de Guerra", hp:420, speed:28, armor:4, reward:60, dmg:6, color:"#7a2020", dark:"#4d1414", radius:24, topOffset:89, plural:"chefes de guerra"},
+    raven:{name:"Corvo de Guerra", hp:30, speed:85, armor:0, reward:10, dmg:2, color:"#4a4a52", dark:"#2b2b31", radius:12, topOffset:44, flying:true, flyHeight:34, plural:"corvos de guerra"}
   };
 
+  // Composicao das ondas.
+  //
+  // Antes cada inimigo era sorteado uniformemente de um balde de tipos, o que
+  // deixava a curva chapada: da onda 6 em diante toda onda era a mesma sopa.
+  // Agora a onda e montada em *pelotoes* — grupos do mesmo tipo que entram
+  // juntos — e o peso de cada tipo muda conforme o cerco avanca: trasgo domina
+  // no comeco e some no fim, orc e cavaleiro crescem, corvo aparece em revoada.
+  // O intervalo tambem passa a ser por inimigo (gap), entao da pra sentir o
+  // ritmo: rajada apertada dentro do pelotao, respiro entre pelotoes.
+  function waveWeights(n){
+    const w = {goblin: Math.max(1.2, 10 - n*0.62)};
+    if(n>=3) w.orc    = Math.min(8, (n-2)*1.5);
+    if(n>=4) w.raven  = Math.min(5, (n-3)*1.1);
+    if(n>=6) w.knight = Math.min(7, (n-5)*1.35);
+    return w;
+  }
+  function pickWeighted(w){
+    const keys = Object.keys(w);
+    let total = 0;
+    for(const k of keys) total += w[k];
+    let r = Math.random()*total;
+    for(const k of keys){ r -= w[k]; if(r<=0) return k; }
+    return keys[keys.length-1];
+  }
   function generateWave(n){
-    const available = ["goblin"];
-    if(n>=3) available.push("orc");
-    if(n>=4) available.push("raven");
-    if(n>=6) available.push("knight");
-    const count = 6 + Math.floor(n*1.5);
-    const hpMul = 1 + (n-1)*0.07;
+    const w = waveWeights(n);
+    const hpMul = 1 + (n-1)*0.08;
+    const tight = Math.max(0.17, 0.34 - n*0.008);   // dentro do pelotao
+    const loose = Math.max(0.55, 1.10 - n*0.020);   // entre pelotoes
+    let budget = 6 + Math.floor(n*1.6);
     const list = [];
-    for(let i=0;i<count;i++){
-      const type = available[Math.floor(Math.random()*available.length)];
-      list.push({type, hpMul});
+    let first = true;
+    while(budget > 0){
+      const type = pickWeighted(w);
+      // corvo vem em revoada; cavaleiro em parede curta; o resto em grupo medio
+      const size = Math.min(budget, type==="raven" ? 3+Math.floor(Math.random()*3)
+                                  : type==="knight" ? 2+Math.floor(Math.random()*2)
+                                  : 2+Math.floor(Math.random()*3));
+      for(let i=0;i<size;i++){
+        list.push({type, hpMul, gap: (i===0 && !first) ? loose : tight});
+        first = false;
+      }
+      budget -= size;
     }
-    if(n%5===0) list.push({type:"warlord", hpMul: 1+(n-1)*0.05});
+    if(n%5===0){
+      // pausa dramatica antes do chefe; na onda final vem acompanhado
+      const bossHp = 1 + (n-1)*0.06;
+      list.push({type:"warlord", hpMul: bossHp, gap: 1.6});
+      if(n>=MAX_WAVE) list.push({type:"warlord", hpMul: bossHp, gap: 0.9});
+    }
     return list;
+  }
+
+  // Como anunciar a onda: os dois tipos mais numerosos, ou o chefe quando ele
+  // vem. Da pro jogador decidir onde gastar o ouro ANTES de convocar.
+  function waveSummary(list){
+    const cnt = {};
+    for(const it of list) cnt[it.type] = (cnt[it.type]||0)+1;
+    if(cnt.warlord) return cnt.warlord>1 ? "dois Chefes de Guerra!" : "Chefe de Guerra!";
+    const names = Object.keys(cnt).sort((a,b)=>cnt[b]-cnt[a]).slice(0,2)
+                        .map(k=>ENEMY_TYPES[k].plural);
+    return names.length>1 ? names[0]+" e "+names[1] : names[0];
   }
 
   // ============================================================
@@ -872,6 +938,7 @@
 
   function resetState(){
     gold = START_GOLD; lives = START_LIVES; wave = 0; waveInProgress = false;
+    gameTime = 0;
     spawnQueue = []; spawnTimer = 0; spawnInterval = 0.65;
     towers = []; enemies = []; projectiles = [];
     for(const p of particles) p.active = false;
@@ -901,7 +968,9 @@
   // ============================================================
   const canvas = document.getElementById("game");
   const ctx = canvas.getContext("2d");
-  const dpr = Math.max(1, Math.min(2, window.devicePixelRatio||1));
+  // reavaliado a cada layout(): o devicePixelRatio muda com zoom do navegador
+  // e ao arrastar a janela pra um monitor com outra densidade
+  let dpr = Math.max(1, Math.min(2, window.devicePixelRatio||1));
 
   const ROT_ANGLE = Math.PI/2;
   let ROT = false;                        // mundo girado 90 graus na vista?
@@ -926,6 +995,7 @@
   function cssPx(v){ return parseFloat(v)||0; }
 
   function layout(){
+    dpr = Math.max(1, Math.min(2, window.devicePixelRatio||1));
     const vv = window.visualViewport;
     const vw = Math.round((vv && vv.width) || window.innerWidth);
     const vh = Math.round((vv && vv.height) || window.innerHeight);
@@ -2230,9 +2300,9 @@
     if(c===ctx) upright(c);
     c.translate(0, -lift);    // a altura do voo e sempre "pra cima" na tela
 
-    if(e.slowUntil > now){
+    if(e.slowUntil > gameTime){
       const ringY = -def.topOffset*scale*0.55;
-      c.globalAlpha = 0.5 + 0.5*Math.sin(now*10);
+      c.globalAlpha = 0.5 + 0.5*Math.sin(gameTime*10);
       c.strokeStyle = "#6fa88d"; c.lineWidth = 2;
       c.beginPath(); c.arc(0, ringY, def.radius+6, 0, Math.PI*2); c.stroke();
       c.globalAlpha = 1;
@@ -2319,7 +2389,10 @@
   function refreshActionLabels(){
     const sw = document.getElementById("btn-start-wave");
     if(ended)            setLabel(sw, "Fim de jogo");
-    else if(waveInProgress) setLabel(sw, compactUI ? "Em curso…" : "Onda em curso…");
+    else if(waveInProgress){
+      const left = spawnQueue.length + enemies.length;
+      setLabel(sw, (compactUI ? "Restam " : "Em curso — restam ")+left);
+    }
     else                 setLabel(sw, (compactUI ? "Onda " : "Convocar Onda ")+Math.min(wave+1, MAX_WAVE));
 
     const pauseBtn = document.getElementById("btn-pause");
@@ -2335,8 +2408,21 @@
     document.getElementById("stat-wave").textContent = wave;
     document.querySelectorAll(".tower-card").forEach(card=>{
       const t = TOWER_TYPES[card.dataset.key];
-      card.style.opacity = (gold < t.cost) ? .55 : 1;
+      // classe, nao style inline: inline vencia o .tower-card:disabled do CSS
+      card.classList.toggle("unaffordable", gold < t.cost);
     });
+    // o botao "Melhorar" so era reavaliado ao selecionar a torre: com a torre
+    // ja selecionada ele ficava travado em cinza mesmo depois do ouro chegar
+    if(selectedTower) showTowerInfo(selectedTower);
+    refreshActionLabels();
+  }
+
+  // reinicia a animacao mesmo se dois inimigos vazarem seguidos
+  function flashBreach(){
+    const el = document.getElementById("breach-flash");
+    el.classList.remove("on");
+    void el.offsetWidth;
+    el.classList.add("on");
   }
 
   function showToast(msg){
@@ -2391,21 +2477,32 @@
   // o dedo esta na tela e some depois, pra nao deixar um fantasma parado.
   let touchAiming = false;
   canvas.addEventListener("pointermove", evt => {
+    if(pressAt && Math.hypot(evt.clientX-pressAt.x, evt.clientY-pressAt.y) > DRAG_SLOP) pressMoved = true;
     if(evt.pointerType === "touch" && !touchAiming) return;
     hoverCell = canvasToGrid(evt);
   });
+  // Onde o toque comecou. Arrastar o dedo/mouse pelo tabuleiro (pra rolar a
+  // pagina ou so mudar de ideia) nao pode construir: o "click" so vale se o
+  // ponteiro praticamente nao andou entre o down e o up.
+  let pressAt = null, pressMoved = false;
+  const DRAG_SLOP = 12;  // px de tela
   canvas.addEventListener("pointerdown", evt => {
     if(evt.pointerType === "touch"){ touchAiming = true; }
+    pressAt = {x:evt.clientX, y:evt.clientY};
+    pressMoved = false;
     hoverCell = canvasToGrid(evt);
   });
   canvas.addEventListener("pointerup", evt => {
+    if(pressAt && Math.hypot(evt.clientX-pressAt.x, evt.clientY-pressAt.y) > DRAG_SLOP) pressMoved = true;
     if(evt.pointerType === "touch"){ touchAiming = false; hoverCell = null; }
   });
-  canvas.addEventListener("pointercancel", () => { touchAiming = false; hoverCell = null; });
+  canvas.addEventListener("pointercancel", () => { touchAiming = false; hoverCell = null; pressMoved = true; });
   canvas.addEventListener("mouseleave", () => hoverCell = null);
 
   canvas.addEventListener("click", evt => {
-    if(ended) return;
+    const dragged = pressMoved;
+    pressAt = null; pressMoved = false;
+    if(ended || dragged) return;
     const g = canvasToGrid(evt);
     if(g.c<0||g.c>=COLS||g.r<0||g.r>=ROWS) return;
 
@@ -2438,10 +2535,19 @@
   });
 
   document.addEventListener("keydown", e => {
+    if(e.target && /^(INPUT|TEXTAREA)$/.test(e.target.tagName)) return;
     if(e.key==="1") toggleArm("archer");
     else if(e.key==="2") toggleArm("cannon");
     else if(e.key==="3") toggleArm("mage");
     else if(e.key==="4") toggleArm("ballista");
+    else if(e.key===" "){
+      // espaco: convoca a onda se der, senao alterna a pausa
+      e.preventDefault();
+      if(!ended && !waveInProgress && wave<MAX_WAVE) startNextWave();
+      else document.getElementById("btn-pause").click();
+    }
+    else if(e.key==="u"||e.key==="U") document.getElementById("btn-upgrade").click();
+    else if(e.key==="x"||e.key==="X") document.getElementById("btn-sell").click();
     else if(e.key==="Escape"){ armedType=null; selectedTower=null; hideTowerInfo(); refreshCardStates(); }
   });
 
@@ -2479,7 +2585,7 @@
     waveInProgress = true;
     document.getElementById("btn-start-wave").disabled = true;
     refreshActionLabels();
-    showToast("Onda "+wave+(wave%5===0 ? " — Chefe de Guerra!" : ""));
+    showToast("Onda "+wave+" — "+waveSummary(spawnQueue));
     updateHUD();
     playSfx("wave");
   }
@@ -2489,20 +2595,30 @@
   function spawnFromQueue(dt){
     if(spawnQueue.length===0) return;
     spawnTimer -= dt;
-    if(spawnTimer<=0){
+    let spawned = false;
+    // laco, nao "if": no x2 um quadro pode valer mais de um intervalo, e o
+    // `spawnTimer = spawnInterval` de antes jogava a sobra fora, esticando a onda
+    while(spawnTimer<=0 && spawnQueue.length>0){
       const item = spawnQueue.shift();
       const def = ENEMY_TYPES[item.type];
       enemies.push({
         id: enemyIdSeq++, type:item.type, dist:0,
         hp: Math.round(def.hp*item.hpMul), maxHp: Math.round(def.hp*item.hpMul),
         speed: def.speed, x:WAYPOINTS[0].x, y:WAYPOINTS[0].y,
-        slowUntil:0, slowFactor:1, animPhase:0, hitFlash:0
+        slowUntil:0, slowFactor:1, animPhase:0, hitFlash:0, dead:false
       });
-      spawnTimer = spawnInterval;
+      const next = spawnQueue[0];
+      spawnTimer += (next && next.gap!=null) ? next.gap : spawnInterval;
+      spawned = true;
     }
+    if(spawned) refreshActionLabels();   // o rotulo mostra quantos faltam
   }
 
   function waveClearCheck(){
+    // Sem essa guarda: morrer para o ULTIMO inimigo da onda 15 chamava
+    // defeat() dentro de updateEnemies e, no mesmo quadro, waveClearCheck via
+    // a lista vazia e chamava victory() por cima — "Cerco repelido!" com 0 vidas.
+    if(ended) return;
     if(waveInProgress && spawnQueue.length===0 && enemies.length===0){
       waveInProgress = false;
       const bonus = 20 + wave*4;
@@ -2521,6 +2637,20 @@
   // ============================================================
   // Combat
   // ============================================================
+  // Onde o inimigo vai estar quando o tiro chegar. Como todo inimigo anda
+  // sobre a trilha, da pra prever exatamente: basta avancar e.dist. Duas
+  // iteracoes ja convergem. Sem isso o tiro mirava onde o alvo *estava* e
+  // errava os rapidos (a balista errava 27% dos corvos).
+  function leadPoint(fromX, fromY, e, projSpeed){
+    const spd = e.speed * (gameTime<e.slowUntil ? e.slowFactor : 1);
+    let p = {x:e.x, y:e.y};
+    for(let i=0;i<2;i++){
+      const t = Math.hypot(p.x-fromX, p.y-fromY)/projSpeed;
+      p = pointAtDistance(Math.min(TOTAL_LEN, e.dist + spd*t));
+    }
+    return p;
+  }
+
   function findTarget(tower, def){
     let best=null, bestDist=-1;
     for(const e of enemies){
@@ -2551,11 +2681,15 @@
       tw.cooldown = def.rate;
       tw.fireFlash = 1;
       const muzzle = sv(0,-20);   // a boca do canhao fica acima da torre na tela
+      const mx = tw.x+muzzle.x, my = tw.y+muzzle.y;
+      const aim = leadPoint(mx, my, target, def.projSpeed);
       projectiles.push({
-        x:tw.x+muzzle.x, y:tw.y+muzzle.y, tx:target.x, ty:target.y,
+        x:mx, y:my, tx:aim.x, ty:aim.y,
         speed:def.projSpeed, dmg:def.dmg, color:TOWER_TYPES[tw.type].color,
         splash:def.splash||0, slow: def.slow||null, canHitFlying: def.canHitFlying||false,
-        targetId: target.id
+        // tiro de alvo unico persegue o alvo vivo; a bomba do canhao cai no
+        // ponto previsto (e o respingo resolve), que e o que faz area valer
+        target: (def.splash||0)>0 ? null : target
       });
       spawnParticle("muzzle", tw.x+muzzle.x, tw.y+muzzle.y, {
         life:0.12, size:16, layer:"front",
@@ -2568,6 +2702,11 @@
   function updateProjectiles(dt){
     for(let i=projectiles.length-1;i>=0;i--){
       const p = projectiles[i];
+      if(p.target){
+        // alvo morreu ou vazou: o tiro segue ate o ultimo ponto conhecido
+        if(p.target.dead) p.target = null;
+        else { p.tx = p.target.x; p.ty = p.target.y; }
+      }
       const dx=p.tx-p.x, dy=p.ty-p.y;
       const dist = Math.hypot(dx,dy);
       const step = p.speed*dt;
@@ -2593,7 +2732,12 @@
         const dealt = Math.max(1, p.dmg-def.armor);
         e.hp -= dealt;
         e.hitFlash = 1;
-        if(p.slow){ e.slowUntil = now+p.slow.duration; e.slowFactor = p.slow.factor; }
+        if(p.slow){
+          // um mago nivel 1 acertando depois de um nivel 2 nao pode *aliviar*
+          // o inimigo: fica sempre o fator mais forte, e o prazo mais longo
+          if(e.slowUntil<=gameTime || p.slow.factor < e.slowFactor) e.slowFactor = p.slow.factor;
+          e.slowUntil = Math.max(e.slowUntil, gameTime + p.slow.duration);
+        }
         const dOff = sv(0, -def.topOffset*ENEMY_DRAW_SCALE-14);
         const dVel = sv(0, -26);
         spawnParticle("dmgtext", e.x+dOff.x, e.y+dOff.y, {
@@ -2628,18 +2772,21 @@
             life:0.4+Math.random()*0.2, color:"#e0ac57", layer:"front"
           });
         }
+        e.dead = true;
         enemies.splice(i,1);
         updateHUD();
         continue;
       }
-      const spd = e.speed * (now<e.slowUntil ? e.slowFactor : 1);
+      const spd = e.speed * (gameTime<e.slowUntil ? e.slowFactor : 1);
       e.animPhase += spd*dt;
       e.dist += spd*dt;
       if(e.dist>=TOTAL_LEN){
         lives -= ENEMY_TYPES[e.type].dmg;
+        e.dead = true;
         enemies.splice(i,1);
         updateHUD();
         playSfx("hurt");
+        flashBreach();
         if(lives<=0){ lives=0; updateHUD(); defeat(); return; }
         continue;
       }
@@ -2662,8 +2809,14 @@
     catch(e){ return 0; }
   }
 
-  function defeat(){
+  function endCleanup(){
     ended = true;
+    armedType = null; selectedTower = null; hoverCell = null;
+    hideTowerInfo(); refreshCardStates(); refreshActionLabels();
+    document.getElementById("btn-start-wave").disabled = true;
+  }
+  function defeat(){
+    endCleanup();
     saveBest();
     document.getElementById("end-title").textContent = "O castelo caiu";
     document.getElementById("end-desc").innerHTML = "Você resistiu até a onda <b>"+wave+"</b> de "+MAX_WAVE+".";
@@ -2671,7 +2824,7 @@
     playSfx("gameover");
   }
   function victory(){
-    ended = true;
+    endCleanup();
     saveBest();
     document.getElementById("end-title").textContent = "Cerco repelido!";
     document.getElementById("end-desc").innerHTML = "As 15 ondas foram derrotadas com <b>"+lives+"</b> vidas restantes.";
@@ -2703,7 +2856,10 @@
     // build preview
     if(armedType && hoverCell && !ended){
       const t = TOWER_TYPES[armedType];
-      const valid = !isPathCell(hoverCell.c,hoverCell.r) && !towers.some(tw=>tw.c===hoverCell.c&&tw.r===hoverCell.r) && gold>=t.cost;
+      // celula fora da grade tambem e invalida: antes a previa aparecia verde
+      // na margem do quadro e o toque nao construia nada, sem explicacao
+      const inside = hoverCell.c>=0 && hoverCell.c<COLS && hoverCell.r>=0 && hoverCell.r<ROWS;
+      const valid = inside && !isPathCell(hoverCell.c,hoverCell.r) && !towers.some(tw=>tw.c===hoverCell.c&&tw.r===hoverCell.r) && gold>=t.cost;
       const cx = hoverCell.c*TILE+TILE/2, cy = hoverCell.r*TILE+TILE/2;
       ctx.fillStyle = valid ? "rgba(111,168,141,.35)" : "rgba(201,72,66,.35)";
       ctx.fillRect(hoverCell.c*TILE, hoverCell.r*TILE, TILE, TILE);
@@ -2764,7 +2920,13 @@
   // ============================================================
   // Loop
   // ============================================================
-  let last = performance.now(), now = 0;
+  // Dois relogios, de proposito:
+  //   now      - relogio de parede, so pra enfeite (tremular de tocha etc.).
+  //   gameTime - tempo *de jogo*: anda com dt, ou seja, acelera no x2 e congela
+  //              na pausa. Tudo que e regra (duracao de lentidao) usa esse.
+  // Antes a lentidao do mago usava `now`, entao ela durava os mesmos segundos
+  // de relogio no x2 — o que no tempo de jogo era metade do efeito.
+  let last = performance.now(), now = 0, gameTime = 0;
   function frame(t){
     requestAnimationFrame(frame);
     const dtReal = Math.min(0.05, (t-last)/1000);
@@ -2772,6 +2934,7 @@
     now = t/1000;
     if(paused || ended){ render(); return; }
     const dt = dtReal*speedMul;
+    gameTime += dt;
 
     spawnFromQueue(dt);
     updateTowers(dt);
@@ -2805,7 +2968,9 @@
     document.getElementById("overlay-pause").classList.add("hidden");
   });
   document.getElementById("btn-speed").addEventListener("click", ()=>{
-    speedMul = speedMul===1 ? 2 : 1;
+    // 1 -> 2 -> 3 -> 1. Sao 15 ondas; quem ja sabe o que esta fazendo nao
+    // deveria ter que esperar o x1 na abertura de cada onda.
+    speedMul = speedMul>=3 ? 1 : speedMul+1;
     refreshActionLabels();
   });
   document.getElementById("btn-mute").addEventListener("click", ()=>{
