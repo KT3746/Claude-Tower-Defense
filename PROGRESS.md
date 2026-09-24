@@ -341,3 +341,56 @@ Os dois ajustes já foram feitos pelo usuário nesta conversa — não deveriam
 ser necessários de novo, a menos que o repo seja recriado do zero ou o
 workflow passe a rodar numa branch nova. Se `pages.yml` começar a falhar,
 comece descartando essas duas causas antes de mexer no YAML.
+
+## Protótipo 3D (branch `claude/prototipo-3d`, só visual)
+
+Pedido do usuário pra decidir se vale migrar o jogo pra 3D. Fica num arquivo
+separado, **`index3d.html`** — `index.html`, `pages.yml` e o Artifact do jogo
+não foram tocados. Artifact próprio (novo, não é o do jogo):
+https://claude.ai/artifact/HnGUkw5HWPuQ9JTX1DYqtL
+
+- **O que tem**: mesma grade 18×10 e mesmos `WAYPOINTS_GRID`, em low-poly
+  facetado (Lambert + `flatShading`), geometria 100% em código. Estrada com
+  lajes em fileiras alternadas + meio-fio, castelo (2 torres redondas de
+  telhado vermelho, portão em arco, bandeiras), caverna de saída, lagoa,
+  ~70 árvores, pedras e tufos (tudo `InstancedMesh`: 1 draw call por tipo).
+  Torre de Arqueiro com arqueiro que gira, puxa o arco e atira flechas em
+  arco parabólico com mira antecipada (mesma ideia do `leadPoint()`).
+  5 Trasgos articulados (quadril/joelho/braços, passada por seno, andam
+  curvados) em loop; tomam 3 flechas, caem e renascem na caverna. Corvo
+  batendo asas sobre a estrada (a sombra sai de graça da luz do sol).
+  Sol com sombra projetada (mapa 2048, 1024 no celular), tocha com
+  `PointLight` piscando, névoa que acompanha a distância da câmera.
+- **Câmera**: arrastar gira, pinça/roda aproxima, dois dedos ou shift/botão
+  direito movem o foco, toque duplo recentra. Enquadramento calculado
+  (busca binária projetando os cantos do mapa). Em retrato gira 90° sozinha
+  com o castelo embaixo, igual ao 2D girado.
+- **Comparar desempenho**: FPS no canto; botões pra desligar sombras e
+  alternar resolução (2× ↔ 1×). No headless (SwiftShader, sem GPU) dá
+  ~20 fps, número que não diz nada — a medição real é no aparelho.
+- **Three.js inline, sem CDN**: o r186 não tem mais `three.min.js` e o
+  `three.module.js` importa `three.core.js`. Solução: um `entry.js` que
+  reexporta só as classes usadas, empacotado com esbuild (`--format=iife
+  --global-name=THREE --minify`) → ~540 KB inline (~140 KB gzip); o
+  arquivo final tem ~590 KB. O código da cena é o 2º `<script>`, legível,
+  e dá pra editar direto no `index3d.html`. Se precisar de uma classe nova
+  do three, é preciso reempacotar (npm `three@0.186.1` + `esbuild`).
+
+**Impressões de custo de migração** (pra conversa com o usuário):
+- O visual 3D saiu barato: ~700 linhas pra cena inteira. O caro seria o
+  resto: o jogo tem ~3000 linhas e quase metade é desenho 2D (sprites
+  assados, `paintBackground`, `drawTower`, painters dos 4 inimigos) que
+  teria de ser refeito como geometria — mais 3 inimigos, 3 torres, os
+  níveis de upgrade, partículas, números de dano e o círculo de alcance.
+- A lógica (ondas, economia, `gameTime`, `leadPoint`, alvo) migra quase
+  inteira: basta trocar pixels por casas (1 casa = 50px = 1 unidade).
+- Entrada muda de natureza: hoje é clique numa grade 2D; em 3D precisa de
+  raycast no chão e de separar "arrastar a câmera" de "tocar pra construir"
+  (o limiar de 12px do Incremento 6 continua valendo). A rotação de 90° do
+  retrato (`ROT`, `upright()`, `v2w()`) some — a câmera resolve isso.
+- Riscos: peso do arquivo (+540 KB só da biblioteca), desempenho em
+  celular fraco (sombra é o item mais caro; o botão existe pra medir) e o
+  teto de "low-poly de código" — bonito, mas não fica com cara de jogo
+  comercial sem modelos, que a regra do projeto proíbe.
+- Estimativa grosseira: 3 a 5 incrementos do tamanho dos anteriores
+  (cena + torres; inimigos; entrada/construção/HUD; efeitos; polimento).
