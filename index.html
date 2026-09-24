@@ -942,6 +942,8 @@
     spawnQueue = []; spawnTimer = 0; spawnInterval = 0.65;
     towers = []; enemies = []; projectiles = [];
     for(const p of particles) p.active = false;
+    for(const s of corpses) s.active = false;
+    for(const s of decals) s.active = false;
     emberTimer = 0; fogTimer = 0;
     armedType = null; selectedTower = null; paused = false; ended = false; speedMul = 1;
     hoverCell = null;
@@ -1592,7 +1594,7 @@
       if(p.type==="spark"){
         p.x += p.vx*dt; p.y += p.vy*dt;
         p.vx += grav.x*dt; p.vy += grav.y*dt;
-      } else if(p.type==="ember" || p.type==="fog"){
+      } else if(p.type==="ember" || p.type==="fog" || p.type==="smoke"){
         p.x += p.vx*dt; p.y += p.vy*dt;
       } else if(p.type==="dmgtext"){
         p.x += p.vx*dt; p.y += p.vy*dt;
@@ -1634,6 +1636,11 @@
         ctx.fillStyle = "#e0ac57";
         ctx.beginPath(); ctx.arc(p.x,p.y,p.size,0,Math.PI*2); ctx.fill();
         ctx.globalAlpha = 1;
+      } else if(p.type==="smoke"){
+        const r = p.size + (p.growTo-p.size)*lr;
+        ctx.globalAlpha = 0.55*(1-lr)*Math.min(1, lr*6);
+        ctx.drawImage(BLOT_SMOKE, p.x-r, p.y-r, r*2, r*2);
+        ctx.globalAlpha = 1;
       } else if(p.type==="fog"){
         const env = Math.min(1,lr*3) * Math.min(1,(1-lr)*3);
         ctx.save();
@@ -1665,6 +1672,168 @@
         vx:fv.x, vy:fv.y, life:12+Math.random()*6,
         size:90+Math.random()*40, alpha:0.06+Math.random()*0.04, layer:"back"
       });
+    }
+  }
+
+  // ============================================================
+  // Rastros de combate: corpos que tombam e marcas no chao
+  //
+  // Antes o inimigo simplesmente sumia ao morrer e todo tiro terminava no
+  // mesmo anel branco. Agora o corpo tomba e desbota, deixa uma mancha, e
+  // cada torre tem a sua assinatura no chao (cratera do canhao, runa do mago,
+  // flecha cravada quando o arqueiro erra). Dois pools fixos, como o de
+  // particulas -- so que cheio recicla o mais velho em vez de descartar o
+  // novo, porque a marca recente e a que o jogador esta olhando.
+  // ============================================================
+  const MAX_CORPSES = 24, MAX_DECALS = 48;
+  const CORPSE_FALL = 0.28, CORPSE_LIFE = 0.95;
+  const corpses = [], decals = [];
+  for(let i=0;i<MAX_CORPSES;i++) corpses.push({active:false});
+  for(let i=0;i<MAX_DECALS;i++) decals.push({active:false});
+
+  function takeSlot(pool){
+    let oldest = null;
+    for(const s of pool){
+      if(!s.active) return s;
+      if(!oldest || s.t/s.life > oldest.t/oldest.life) oldest = s;
+    }
+    return oldest;
+  }
+
+  // mancha escura macia (mesma ideia do makeGlow, mas pintada por cima, nao somada)
+  function makeBlot(r,g,b,size){
+    const c = document.createElement("canvas");
+    c.width = c.height = size;
+    const gctx = c.getContext("2d");
+    const grad = gctx.createRadialGradient(size/2,size/2,0, size/2,size/2,size/2);
+    grad.addColorStop(0, "rgba("+r+","+g+","+b+",0.85)");
+    grad.addColorStop(0.55, "rgba("+r+","+g+","+b+",0.45)");
+    grad.addColorStop(1, "rgba("+r+","+g+","+b+",0)");
+    gctx.fillStyle = grad;
+    gctx.fillRect(0,0,size,size);
+    return c;
+  }
+  const BLOT_STAIN = makeBlot(22,16,10,64);
+  const BLOT_SMOKE = makeBlot(58,54,48,64);
+  // cratera: miolo queimado + borda de terra revolvida mais clara
+  const CRATER = (function(){
+    const size = 96, c = document.createElement("canvas");
+    c.width = c.height = size;
+    const g = c.getContext("2d"), m = size/2;
+    let gr = g.createRadialGradient(m,m,0, m,m,m);
+    gr.addColorStop(0, "rgba(14,10,6,0.9)");
+    gr.addColorStop(0.45, "rgba(30,22,14,0.7)");
+    gr.addColorStop(0.72, "rgba(120,96,64,0.35)");
+    gr.addColorStop(1, "rgba(120,96,64,0)");
+    g.fillStyle = gr; g.fillRect(0,0,size,size);
+    // estilhacos riscados pra fora, fixos (a cratera e sempre a mesma forma)
+    g.strokeStyle = "rgba(14,10,6,0.55)"; g.lineWidth = 2; g.lineCap = "round";
+    for(let i=0;i<9;i++){
+      const a = i*0.7 + (i%3)*0.35, r0 = m*0.35, r1 = m*(0.62 + (i%4)*0.08);
+      g.beginPath(); g.moveTo(m+Math.cos(a)*r0, m+Math.sin(a)*r0);
+      g.lineTo(m+Math.cos(a)*r1, m+Math.sin(a)*r1); g.stroke();
+    }
+    return c;
+  })();
+
+  function spawnCorpse(e){
+    const s = takeSlot(corpses);
+    s.active = true; s.t = 0; s.life = CORPSE_LIFE;
+    s.type = e.type; s.x = e.x; s.y = e.y;
+    s.frame = enemyFrame(e);
+    s.dir = Math.random()<0.5 ? -1 : 1;
+  }
+  function spawnDecal(kind, x, y, opts){
+    const s = takeSlot(decals);
+    s.active = true; s.t = 0; s.kind = kind; s.x = x; s.y = y;
+    s.size = 10; s.life = 3; s.alpha = 1; s.ang = 0;
+    Object.assign(s, opts);
+  }
+  function updateRemains(dt){
+    for(const s of corpses) if(s.active && (s.t += dt) >= s.life) s.active = false;
+    for(const s of decals)  if(s.active && (s.t += dt) >= s.life) s.active = false;
+  }
+
+  // marcas de chao: desenhadas logo depois do fundo, por baixo de tudo que anda
+  function drawDecals(){
+    for(const d of decals){
+      if(!d.active) continue;
+      const lr = d.t/d.life;
+      // entra forte e so desbota no ultimo terco -- da tempo de ser vista
+      const fade = lr<0.66 ? 1 : 1-(lr-0.66)/0.34;
+      if(d.kind==="stain" || d.kind==="crater"){
+        // achatada na vertical *da tela*, gire o tabuleiro ou nao
+        ctx.save();
+        ctx.translate(d.x, d.y); upright(ctx);
+        ctx.scale(1, 0.55);
+        ctx.globalAlpha = d.alpha*fade;
+        const spr = d.kind==="crater" ? CRATER : BLOT_STAIN;
+        ctx.drawImage(spr, -d.size, -d.size, d.size*2, d.size*2);
+        ctx.restore();
+      } else if(d.kind==="rune"){
+        // circulo magico que gira e se abre, somado a luz do chao
+        const r = d.size*(0.7 + 0.4*lr);
+        ctx.save();
+        ctx.translate(d.x, d.y); upright(ctx);
+        ctx.scale(1, 0.55);
+        ctx.rotate(d.t*2.2);
+        ctx.globalCompositeOperation = "lighter";
+        ctx.globalAlpha = 0.75*(1-lr);
+        ctx.strokeStyle = "#7fc4a8"; ctx.lineWidth = 1.6;
+        ctx.beginPath(); ctx.arc(0,0,r,0,Math.PI*2); ctx.stroke();
+        ctx.setLineDash([3,4]);
+        ctx.beginPath(); ctx.arc(0,0,r*0.62,0,Math.PI*2); ctx.stroke();
+        ctx.setLineDash([]);
+        for(let k=0;k<3;k++){
+          const a = k*Math.PI*2/3;
+          ctx.beginPath();
+          ctx.moveTo(Math.cos(a)*r*0.62, Math.sin(a)*r*0.62);
+          ctx.lineTo(Math.cos(a+2.1)*r*0.62, Math.sin(a+2.1)*r*0.62);
+          ctx.stroke();
+        }
+        ctx.restore();
+      } else if(d.kind==="arrow"){
+        // flecha cravada: so a metade de tras fica pra fora, na direcao do voo
+        ctx.save();
+        ctx.translate(d.x, d.y); ctx.rotate(d.ang);
+        ctx.globalAlpha = fade;
+        ctx.strokeStyle = "#6b5334"; ctx.lineWidth = 1.6;
+        ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(-9,0); ctx.stroke();
+        ctx.fillStyle = "#e6dcc4";
+        ctx.beginPath(); ctx.moveTo(-9,0); ctx.lineTo(-12,-2.5); ctx.lineTo(-7,0); ctx.lineTo(-12,2.5); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = "rgba(10,8,5,.35)";
+        ctx.beginPath(); ctx.ellipse(0,0,2.2,1.4,0,0,Math.PI*2); ctx.fill();
+        ctx.restore();
+      }
+    }
+  }
+
+  // corpo tombando em torno dos pes (a ancora do sprite) e desbotando;
+  // o corvo despenca da altura de voo ate o chao enquanto gira
+  function drawCorpses(){
+    const scale = ENEMY_DRAW_SCALE;
+    const dx = -ENEMY_ANCHOR_X*scale, dy = -ENEMY_ANCHOR_Y*scale;
+    const dw = ENEMY_FRAME_W*scale, dh = ENEMY_FRAME_H*scale;
+    for(const s of corpses){
+      if(!s.active) continue;
+      const def = ENEMY_TYPES[s.type];
+      const k = Math.min(1, s.t/CORPSE_FALL);
+      const ease = 1-(1-k)*(1-k);
+      const fade = s.t<CORPSE_FALL ? 1 : Math.max(0, 1-(s.t-CORPSE_FALL)/(s.life-CORPSE_FALL));
+      const sx = s.frame*ENEMY_FRAME_W;
+      ctx.save();
+      ctx.translate(s.x, s.y); upright(ctx);
+      if(def.flying) ctx.translate(0, -def.flyHeight*(1-ease*ease));
+      ctx.rotate(s.dir*ease*(def.flying ? 2.4 : 1.35));
+      if(!def.flying) ctx.scale(1, 1-0.12*ease);   // afunda um pouco ao bater no chao
+      ctx.globalAlpha = fade;
+      ctx.drawImage(enemySprites[s.type], sx, 0, ENEMY_FRAME_W, ENEMY_FRAME_H, dx, dy, dw, dh);
+      // lampejo branco no instante do golpe, apagando enquanto cai
+      if(k<1){
+        ctx.globalAlpha = fade*(1-k)*0.8;
+        ctx.drawImage(enemyFlashSprites[s.type], sx, 0, ENEMY_FRAME_W, ENEMY_FRAME_H, dx, dy, dw, dh);
+      }
+      ctx.restore();
     }
   }
 
@@ -2172,21 +2341,32 @@
   // A same-shape white silhouette per sheet, used to tint a hit character
   // without touching any pixels outside its own silhouette (no shadowBlur,
   // no full-rect overlay bleeding onto the grass behind it).
-  function buildFlashSheet(sourceStrip){
+  function buildFlashSheet(sourceStrip, color){
     const c = document.createElement("canvas");
     c.width = sourceStrip.width; c.height = sourceStrip.height;
     const g = c.getContext("2d");
     g.drawImage(sourceStrip,0,0);
     g.globalCompositeOperation = "source-in";
-    g.fillStyle = "#ece3cf";
+    g.fillStyle = color || "#ece3cf";
     g.fillRect(0,0,c.width,c.height);
     return c;
   }
 
-  const enemySprites = {}, enemyFlashSprites = {};
+  // A mesma silhueta em verde-gelo marca quem esta sob a lentidao do mago:
+  // desenhada 4x deslocada por tras do sprite vira um contorno, e por cima,
+  // bem transparente, tinge o corpo. O anel pulsando de antes se perdia no
+  // meio de um pelotao.
+  const SLOW_TINT = "#8fe0c4";
+  const enemySprites = {}, enemyFlashSprites = {}, enemySlowSprites = {};
   for(const type of Object.keys(ENEMY_TYPES)){
     enemySprites[type] = buildEnemySpriteSheet(type);
     enemyFlashSprites[type] = buildFlashSheet(enemySprites[type]);
+    enemySlowSprites[type] = buildFlashSheet(enemySprites[type], SLOW_TINT);
+  }
+
+  function enemyFrame(e){
+    const walk = e.animPhase*0.15;
+    return Math.round((walk % (Math.PI*2))/(Math.PI*2)*ENEMY_FRAMES) % ENEMY_FRAMES;
   }
 
   // ============================================================
@@ -2277,9 +2457,7 @@
 
   function drawEnemy(c, e){
     const def = ENEMY_TYPES[e.type];
-    const walk = e.animPhase*0.15;
-    const frameIdx = Math.round((walk % (Math.PI*2))/(Math.PI*2)*ENEMY_FRAMES) % ENEMY_FRAMES;
-    const sx = frameIdx*ENEMY_FRAME_W;
+    const sx = enemyFrame(e)*ENEMY_FRAME_W;
     const scale = ENEMY_DRAW_SCALE;
     const dx = -ENEMY_ANCHOR_X*scale, dy = -ENEMY_ANCHOR_Y*scale;
     const dw = ENEMY_FRAME_W*scale, dh = ENEMY_FRAME_H*scale;
@@ -2300,15 +2478,23 @@
     if(c===ctx) upright(c);
     c.translate(0, -lift);    // a altura do voo e sempre "pra cima" na tela
 
-    if(e.slowUntil > gameTime){
-      const ringY = -def.topOffset*scale*0.55;
-      c.globalAlpha = 0.5 + 0.5*Math.sin(gameTime*10);
-      c.strokeStyle = "#6fa88d"; c.lineWidth = 2;
-      c.beginPath(); c.arc(0, ringY, def.radius+6, 0, Math.PI*2); c.stroke();
+    const slowed = e.slowUntil > gameTime;
+    if(slowed){
+      const slowSheet = enemySlowSprites[e.type];
+      c.globalAlpha = 0.9;
+      for(let k=0;k<4;k++){
+        const ox = k===0 ? -1.4 : k===1 ? 1.4 : 0, oy = k===2 ? -1.4 : k===3 ? 1.4 : 0;
+        c.drawImage(slowSheet, sx, 0, ENEMY_FRAME_W, ENEMY_FRAME_H, dx+ox, dy+oy, dw, dh);
+      }
       c.globalAlpha = 1;
     }
 
     c.drawImage(enemySprites[e.type], sx, 0, ENEMY_FRAME_W, ENEMY_FRAME_H, dx, dy, dw, dh);
+    if(slowed){
+      c.globalAlpha = 0.22 + 0.08*Math.sin(gameTime*6);
+      c.drawImage(enemySlowSprites[e.type], sx, 0, ENEMY_FRAME_W, ENEMY_FRAME_H, dx, dy, dw, dh);
+      c.globalAlpha = 1;
+    }
     if(e.hitFlash>0){
       c.globalAlpha = e.hitFlash*0.7;
       c.drawImage(enemyFlashSprites[e.type], sx, 0, ENEMY_FRAME_W, ENEMY_FRAME_H, dx, dy, dw, dh);
@@ -2683,8 +2869,10 @@
       const muzzle = sv(0,-20);   // a boca do canhao fica acima da torre na tela
       const mx = tw.x+muzzle.x, my = tw.y+muzzle.y;
       const aim = leadPoint(mx, my, target, def.projSpeed);
+      const aimLen = Math.hypot(aim.x-mx, aim.y-my) || 1;
       projectiles.push({
-        x:mx, y:my, tx:aim.x, ty:aim.y,
+        x:mx, y:my, tx:aim.x, ty:aim.y, kind:tw.type,
+        dirX:(aim.x-mx)/aimLen, dirY:(aim.y-my)/aimLen,
         speed:def.projSpeed, dmg:def.dmg, color:TOWER_TYPES[tw.type].color,
         splash:def.splash||0, slow: def.slow||null, canHitFlying: def.canHitFlying||false,
         // tiro de alvo unico persegue o alvo vivo; a bomba do canhao cai no
@@ -2714,8 +2902,9 @@
         applyHit(p);
         projectiles.splice(i,1);
       } else {
-        p.x += dx/dist*step;
-        p.y += dy/dist*step;
+        p.dirX = dx/dist; p.dirY = dy/dist;   // orienta flecha/virote no desenho
+        p.x += p.dirX*step;
+        p.y += p.dirY*step;
       }
     }
   }
@@ -2752,10 +2941,48 @@
         }
       }
     }
-    spawnParticle("ring", p.tx, p.ty, {
-      size:4, growTo: p.splash>0?p.splash:14, life:0.33, color:"#ece3cf", layer:"front"
-    });
+    spawnImpact(p, anyHit);
     if(anyHit) playSfx("hit");
+  }
+
+  // Cada torre termina o tiro do seu jeito, pra dar pra ler a briga so de
+  // olhar o chao: bomba abre cratera e fumaca, mago acende uma runa, virote
+  // lasca madeira, e flecha que erra fica cravada.
+  function spawnImpact(p, anyHit){
+    if(p.kind==="cannon"){
+      spawnDecal("crater", p.tx, p.ty, {size:p.splash*0.62, life:6, alpha:0.8});
+      spawnParticle("muzzle", p.tx, p.ty, {life:0.22, size:p.splash*0.9, layer:"front"});
+      spawnParticle("ring", p.tx, p.ty, {size:6, growTo:p.splash, life:0.3, color:"#e0ac57", layer:"front"});
+      for(let k=0;k<3;k++){
+        const v = sv((Math.random()-0.5)*14, -(10+Math.random()*12));
+        spawnParticle("smoke", p.tx+(Math.random()-0.5)*16, p.ty+(Math.random()-0.5)*10, {
+          vx:v.x, vy:v.y, life:0.9+Math.random()*0.5, size:10+Math.random()*6, growTo:26+Math.random()*10, layer:"front"
+        });
+      }
+      for(let k=0;k<6;k++){
+        const ang = Math.random()*Math.PI*2, spd = 60+Math.random()*90;
+        spawnParticle("spark", p.tx, p.ty, {
+          vx:Math.cos(ang)*spd, vy:Math.sin(ang)*spd, size:2,
+          life:0.3+Math.random()*0.2, color:"#f0b95f", layer:"front"
+        });
+      }
+    } else if(p.kind==="mage"){
+      spawnDecal("rune", p.tx, p.ty, {size:18, life:0.8});
+      spawnParticle("muzzle", p.tx, p.ty, {life:0.18, size:14, glow:GLOW_GREEN, layer:"front"});
+    } else if(p.kind==="ballista"){
+      for(let k=0;k<4;k++){
+        const ang = Math.atan2(p.dirY, p.dirX) + Math.PI + (Math.random()-0.5)*1.6;
+        const spd = 50+Math.random()*60;
+        spawnParticle("spark", p.tx, p.ty, {
+          vx:Math.cos(ang)*spd, vy:Math.sin(ang)*spd, size:1.6,
+          life:0.3+Math.random()*0.15, color:"#b0895a", layer:"front"
+        });
+      }
+      spawnParticle("ring", p.tx, p.ty, {size:3, growTo:12, life:0.25, color:"#ece3cf", layer:"front"});
+    } else {
+      if(!anyHit) spawnDecal("arrow", p.tx, p.ty, {life:1.8, ang:Math.atan2(p.dirY, p.dirX)});
+      spawnParticle("ring", p.tx, p.ty, {size:3, growTo:10, life:0.22, color:"#ece3cf", layer:"front"});
+    }
   }
 
   function updateEnemies(dt){
@@ -2772,6 +2999,8 @@
             life:0.4+Math.random()*0.2, color:"#e0ac57", layer:"front"
           });
         }
+        spawnCorpse(e);
+        spawnDecal("stain", e.x, e.y, {size:ENEMY_TYPES[e.type].radius*1.25, life:4.5, alpha:0.55});
         e.dead = true;
         enemies.splice(i,1);
         updateHUD();
@@ -2850,6 +3079,7 @@
     ctx.drawImage(cloudLayer, cloudOffset+CANVAS_W, 0);
     ctx.restore();
 
+    drawDecals();
     drawTorches();
     drawParticles("back");
 
@@ -2877,14 +3107,46 @@
     }
 
     for(const tw of towers) drawTower(ctx, tw.x, tw.y, tw.type, tw.level, tw.fireFlash, tw.animPhase);
+    drawCorpses();
     for(const e of enemies) drawEnemy(ctx, e);
-
-    for(const p of projectiles){
-      ctx.fillStyle = p.color;
-      ctx.beginPath(); ctx.arc(p.x,p.y, p.splash>0?5:3, 0, Math.PI*2); ctx.fill();
-    }
+    for(const p of projectiles) drawProjectile(p);
 
     drawParticles("front");
+  }
+
+  // Flecha e virote apontam pra onde voam; o virote deixa um rastro curto.
+  // Bala de canhao ganha brilho no topo, orbe do mago ganha halo verde.
+  function drawProjectile(p){
+    if(p.kind==="archer" || p.kind==="ballista"){
+      const bolt = p.kind==="ballista";
+      const len = bolt ? 15 : 10;
+      ctx.save();
+      ctx.translate(p.x, p.y); ctx.rotate(Math.atan2(p.dirY, p.dirX));
+      if(bolt){
+        ctx.globalAlpha = 0.28;
+        ctx.strokeStyle = "#ece3cf"; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(-len, 0); ctx.lineTo(-len-22, 0); ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+      ctx.strokeStyle = bolt ? "#5a4630" : "#6b5334"; ctx.lineWidth = bolt ? 2.6 : 1.6;
+      ctx.beginPath(); ctx.moveTo(-len, 0); ctx.lineTo(0, 0); ctx.stroke();
+      ctx.fillStyle = bolt ? "#cfc6b0" : "#d8cfb8";
+      const h = bolt ? 4 : 3;
+      ctx.beginPath(); ctx.moveTo(h+2, 0); ctx.lineTo(-1, -h*0.8); ctx.lineTo(-1, h*0.8); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = bolt ? "#b0895a" : "#e6dcc4";
+      ctx.beginPath(); ctx.moveTo(-len, 0); ctx.lineTo(-len-3, -2.5); ctx.lineTo(-len+2, 0); ctx.lineTo(-len-3, 2.5); ctx.closePath(); ctx.fill();
+      ctx.restore();
+    } else if(p.kind==="mage"){
+      drawGlow(GLOW_GREEN, p.x, p.y, 11, 0.7);
+      ctx.fillStyle = "#cfeee0";
+      ctx.beginPath(); ctx.arc(p.x, p.y, 2.6, 0, Math.PI*2); ctx.fill();
+    } else {
+      ctx.fillStyle = "#1c1813";
+      ctx.beginPath(); ctx.arc(p.x, p.y, 5, 0, Math.PI*2); ctx.fill();
+      const hl = sv(-1.6, -1.6);
+      ctx.fillStyle = "rgba(236,227,207,.55)";
+      ctx.beginPath(); ctx.arc(p.x+hl.x, p.y+hl.y, 1.6, 0, Math.PI*2); ctx.fill();
+    }
   }
 
   // ============================================================
@@ -2941,6 +3203,7 @@
     updateProjectiles(dt);
     updateEnemies(dt);
     updateParticles(dt);
+    updateRemains(dt);
     spawnAmbient(dt);
     cloudOffset -= dt*8;
     if(cloudOffset<=-CANVAS_W) cloudOffset += CANVAS_W;

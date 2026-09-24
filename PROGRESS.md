@@ -259,7 +259,54 @@ chamado para continuar este projeto, comece lendo `index.html` inteiro — são
     convoca a onda ou pausa, **U** melhora, **X** vende (1–4 e Esc já
     existiam). A legenda do rodapé lista os atalhos no desktop.
 
+- **Incremento 7 — combate com peso (gráfico 2D, pacote 1 de 2)**: o
+  usuário pediu ideias de melhoria gráfica; das 12 propostas, este pacote
+  fez as três que mais mudam a sensação de combate sem mexer em
+  balanceamento. Nada novo é desenhado com `shadowBlur`; tudo é pool fixo.
+  - **Morte com peso**: o inimigo não some mais. `spawnCorpse()` guarda o
+    quadro do sprite no instante da morte (`enemyFrame(e)`, extraído de
+    `drawEnemy`) e `drawCorpses()` tomba o corpo em torno dos pés (âncora
+    do sprite), com lampejo branco apagando e desbote em ~0,95s; o corvo
+    despenca da altura de voo girando. Deixa uma **mancha** no chão (~4,5s).
+  - **Impacto por torre** (`spawnImpact()`, chamado de `applyHit`): canhão
+    abre **cratera** (sprite `CRATER` assado uma vez) + fumaça (partícula
+    nova `smoke`) + clarão; mago acende uma **runa** girando no chão; virote
+    da balista lasca madeira; flecha do arqueiro que **erra** fica cravada
+    no chão. Os projéteis também ganharam forma: flecha e virote apontam
+    para onde voam (`p.dirX/dirY`, e o virote tem rastro), bala de canhão
+    com brilho, orbe do mago com halo verde (`drawProjectile()`).
+  - **Lentidão visível**: o anel pulsando sumia no meio do pelotão. Agora
+    há uma terceira folha de sprites por tipo (`enemySlowSprites`, silhueta
+    verde-gelo via o mesmo `buildFlashSheet`), desenhada 4× deslocada por
+    trás do sprite (vira contorno) e bem transparente por cima (tinge).
+  - Marcas de chão e corpos ficam em dois pools novos (`decals` 48,
+    `corpses` 24) que, cheios, **reciclam o mais velho** em vez de descartar
+    o novo (ao contrário das partículas) — a marca recente é a que o jogador
+    está olhando. Decals são desenhados logo após o fundo; corpos antes dos
+    inimigos vivos. Manchas/crateras achatam na vertical *da tela* (via
+    `upright`), então ficam certas em retrato também.
+  - Verificado: `node --check`, Playwright 7 ondas em ×3 em 1280×800 e
+    390×844 (retrato girado) sem erro de console, e recortes ampliados
+    confirmando corpo tombando, cratera, runa e contorno de lentidão.
+
 ## O que falta (próximos incrementos combinados com o usuário)
+
+**Gráfico 2D — pacote 2 (ideias já aprovadas na conversa, ainda não feitas):**
+- Iluminação dia/noite ao longo do cerco (onda 15 à noite; tochas e mago
+  passam a brilhar de verdade) — uma camada de cor por quadro.
+- Castelo que se desgasta conforme as vidas caem (rachaduras, fumaça).
+- Torres que mudam de visual ao melhorar (bandeira/ameias, telhado dourado).
+- Lagoa com reflexo ondulando, grama/copas balançando.
+- Poeira de passos, penas do corvo ao ser atingido.
+- Barra de vida com moldura e "rastro" de dano que encolhe devagar.
+- Tremor de tela suave (canhão, chegada do Chefe), respeitando
+  `prefers-reduced-motion`; telas de vitória/derrota animadas.
+
+**Protótipo 3D (Three.js)**: o usuário perguntou se Three.js ajudaria; a
+recomendação foi não migrar agora e sim comparar com um protótipo. Ele foi
+aberto numa **sessão separada**, na branch `claude/prototipo-3d`, arquivo
+`index3d.html`, com Artifact próprio (não o do jogo). Não mexer nele daqui.
+
 
 **Ainda dentro do Incremento 4 — conteúdo novo:**
 - **Torre de Óleo**: segunda torre nova, dano contínuo em área — reaproveita
