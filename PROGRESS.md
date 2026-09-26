@@ -376,6 +376,36 @@ https://claude.ai/artifact/HnGUkw5HWPuQ9JTX1DYqtL
   e dá pra editar direto no `index3d.html`. Se precisar de uma classe nova
   do three, é preciso reempacotar (npm `three@0.186.1` + `esbuild`).
 
+**QA do protótipo** (Playwright + SwiftShader, cópia instrumentada com
+`window.__dbg`; gestos de toque reais via CDP `Input.dispatchTouchEvent`).
+Passou em 6 telas (1440×900, 1366×768 @1.25, iPhone 390×844 e 844×390,
+SE 320×568, iPad 768×1024) sem erro de console, sem chip sobreposto ou
+fora da tela, sem rolagem. 40s de sessão: geometrias/texturas/shaders
+estáveis (sem vazamento); 46 de 47 flechas acertaram (a última no ar).
+Corrigido nessa rodada:
+- **Toque duplo não recentrava** e, ao contrário, arrastar + tocar logo em
+  seguida podia recentrar sem querer. Agora o toque é reconhecido no
+  `pointerup` (pouco movimento, curto) e o duplo exige dois toques perto.
+  Obs. pra testar de novo: no SwiftShader um quadro leva ~100ms e o toque
+  "dura" 300ms+; desligue sombras e baixe a resolução antes de medir.
+- **Botões cobriam o castelo** no SE em retrato (quebravam em 2 linhas e o
+  enquadramento ignorava o cromo). O `computeFit` agora desconta a faixa
+  dos chips de cima e dos botões de baixo, e no celular estreito os
+  rótulos encurtam ("Sombras sim", "Res. 2×") pra caber numa linha.
+- **Orientação**: em vez de "mais alto que largo = gira", testa as duas e
+  fica com a que mostra o mapa maior (10% de margem pra deitada), como o
+  `layout()` do 2D.
+- **Resolução no Windows 1×** alternava 1× ↔ 1× (não fazia nada). A
+  reduzida agora é metade da nativa (mín. 0,5×); rótulo mostra 1.25×.
+- **Flecha acertava fantasma**: se o trasgo morria por outra flecha ou dava
+  a volta no loop durante o voo, levava o dano mesmo assim. Agora confere
+  a posição no impacto; se errou, a flecha crava no chão por 0,8s.
+- Trasgos atravessavam a parede do castelo antes de sumir; o corvo surgia/
+  sumia no meio do ar (agora vem de longe e sai subindo pra névoa).
+- Dica certa por aparelho (toque não tem roda/shift), caixa da dica não
+  espreme mais no celular, margem do notch dos dois lados, mensagem se o
+  WebGL não iniciar, `touch-action: manipulation` nos botões.
+
 **Impressões de custo de migração** (pra conversa com o usuário):
 - O visual 3D saiu barato: ~700 linhas pra cena inteira. O caro seria o
   resto: o jogo tem ~3000 linhas e quase metade é desenho 2D (sprites

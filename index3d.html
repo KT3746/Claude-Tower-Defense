@@ -11,7 +11,8 @@
     --ink:#f3ead4; --ink-dim:#b3a686; --gold:#c6923d; --gold-bright:#f0b95f;
     --green-bright:#6fa88d; --red-bright:#d65650;
     --lift: 0 1px 2px rgba(0,0,0,.5), 0 6px 16px -4px rgba(0,0,0,.5);
-    --pad: max(10px, env(safe-area-inset-left, 0px));
+    --pad-l: max(10px, env(safe-area-inset-left, 0px));
+    --pad-r: max(10px, env(safe-area-inset-right, 0px));
   }
   html,body{height:100%; margin:0; background:var(--bg); color:var(--ink); overflow:hidden;
     font:500 13px/1.3 "Archivo", system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -21,7 +22,7 @@
   #scene:active{cursor:grabbing}
   .chip{background:var(--panel); border:1px solid var(--line); border-radius:10px; box-shadow:var(--lift);
     -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px);}
-  .top{position:fixed; left:var(--pad); right:var(--pad); top:calc(env(safe-area-inset-top, 0px) + 10px);
+  .top{position:fixed; left:var(--pad-l); right:var(--pad-r); top:calc(env(safe-area-inset-top, 0px) + 10px);
     display:flex; justify-content:space-between; align-items:flex-start; gap:8px; pointer-events:none;}
   .brand{padding:7px 11px; display:flex; flex-direction:column; gap:1px;}
   .brand h1{margin:0; font:700 16px/1.1 "Cinzel", Georgia, serif; letter-spacing:.06em; color:var(--gold-bright);}
@@ -29,14 +30,24 @@
   .fps{padding:6px 10px; text-align:right; font-variant-numeric:tabular-nums; min-width:58px;}
   .fps b{display:block; font:700 20px/1 "Archivo", system-ui, sans-serif; color:var(--green-bright);}
   .fps span{font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-dim);}
-  .bar{position:fixed; left:var(--pad); right:var(--pad); bottom:calc(env(safe-area-inset-bottom, 0px) + 10px);
+  .bar{position:fixed; left:var(--pad-l); right:var(--pad-r); bottom:calc(env(safe-area-inset-bottom, 0px) + 10px);
     display:flex; justify-content:center; gap:8px; flex-wrap:wrap; pointer-events:none;}
   .bar button{pointer-events:auto; font:600 12px/1 "Archivo", system-ui, sans-serif; color:var(--ink);
-    padding:10px 12px; min-height:40px; cursor:pointer; display:flex; gap:5px; align-items:center;}
+    padding:10px 12px; min-height:40px; cursor:pointer; display:flex; gap:5px; align-items:center;
+    white-space:nowrap; touch-action:manipulation;}
+  /* celular estreito: os 3 botoes numa linha so (em 2 linhas eles cobriam o castelo) */
+  @media (max-width:400px){
+    .bar{gap:6px}
+    .bar button{padding:9px 9px; font-size:11.5px; min-height:40px}
+    .brand{padding:6px 10px}
+    .bar button .lg{display:none}
+    .bar button .sh{display:inline}
+  }
+  .bar .sh{display:none}
   .bar button b{color:var(--gold-bright); font-weight:700;}
   .bar button:active{transform:translateY(1px);}
   .bar button:focus-visible{outline:2px solid var(--gold-bright); outline-offset:2px;}
-  .hint{position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); padding:12px 16px; max-width:min(320px, calc(100% - 32px));
+  .hint{position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); padding:12px 16px; width:max-content; max-width:min(340px, calc(100vw - 32px)); box-sizing:border-box;
     text-align:center; color:var(--ink); pointer-events:none; transition:opacity .6s; line-height:1.5;}
   .hint.gone{opacity:0}
   .hint b{color:var(--gold-bright)}
@@ -49,12 +60,11 @@
   <div class="fps chip" aria-live="off"><b id="fps">–</b><span>fps</span></div>
 </div>
 <div class="hint chip" id="hint">
-  <b>Arraste</b> para girar · <b>pinça</b> ou <b>roda</b> para zoom<br>
-  <b>dois dedos</b> ou <b>shift+arrastar</b> movem · <b>toque duplo</b> recentra
+  <b>Arraste</b> para girar · <b>pinça</b> ou <b>roda</b> para zoom
 </div>
 <div class="bar">
-  <button class="chip" id="btn-shadow" type="button" aria-pressed="true">Sombras <b>ligadas</b></button>
-  <button class="chip" id="btn-res" type="button" aria-pressed="true">Resolução <b>2×</b></button>
+  <button class="chip" id="btn-shadow" type="button" aria-pressed="true">Sombras <b data-on="ligadas" data-off="desligadas" data-on-s="sim" data-off-s="não">ligadas</b></button>
+  <button class="chip" id="btn-res" type="button" aria-pressed="true"><span class="lg">Resolução</span><span class="sh">Res.</span> <b>2×</b></button>
   <button class="chip" id="btn-reset" type="button">Recentrar</button>
 </div>
 <script>
@@ -4338,7 +4348,12 @@ void main() {
   // ============================================================
   const isTouch = matchMedia("(pointer:coarse)").matches;
   const canvas = document.getElementById("scene");
-  const renderer = new T.WebGLRenderer({canvas, antialias:true, powerPreference:"high-performance"});
+  let renderer;
+  try { renderer = new T.WebGLRenderer({canvas, antialias:true, powerPreference:"high-performance"}); }
+  catch(err){
+    document.getElementById("hint").innerHTML = "Este navegador não conseguiu iniciar o WebGL, que o protótipo 3D precisa.<br>Tente atualizar o navegador ou ativar a aceleração por hardware.";
+    return;
+  }
   renderer.outputColorSpace = T.SRGBColorSpace;
   renderer.toneMapping = T.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.05;
@@ -4481,6 +4496,7 @@ void main() {
   // ============================================================
   const STONE = 0x847c62, STONE_D = 0x6b634e, ROOF = 0x7a352f;
   const castle = new T.Group();
+  const flags = [];
   (function buildCastle(){
     const g = castle;
     // muralha
@@ -4508,6 +4524,7 @@ void main() {
       flag.userData.flag = true; g.add(flag);
     }
     g.position.set(WP[WP.length-1].x - 0.3, 0, WP[WP.length-1].z);
+    g.traverse(m => { if(m.userData.flag) flags.push(m); });
     scene.add(g);
   })();
 
@@ -4756,7 +4773,7 @@ void main() {
     raven.scale.setScalar(1.3);
     scene.add(raven);
   })();
-  let ravenDist = 5;
+  let ravenDist = 3;
 
   // Particulas simples de impacto (pool fixo, nunca aloca -- regra do projeto)
   const sparks = [];
@@ -4786,39 +4803,52 @@ void main() {
     // nevoa acompanha a distancia: leve no tabuleiro, esconde a borda do mundo
     scene.fog.near = cam.dist*1.05; scene.fog.far = cam.dist*2.4;
   }
-  // distancia que enquadra o tabuleiro inteiro para o yaw/pitch atuais
-  function computeFit(){
+  // distancia que enquadra o tabuleiro inteiro para o yaw/pitch atuais,
+  // descontando a faixa ocupada pelos chips do topo e pelos botoes de baixo
+  // (senao, no celular estreito, os botoes cobrem o castelo)
+  const topEl = document.querySelector(".top"), barEl = document.querySelector(".bar");
+  function computeFit(yaw){
+    const saved = cam.yaw; if(yaw !== undefined) cam.yaw = yaw;
+    const h = innerHeight;
+    const yTop = 1 - 2*(topEl.getBoundingClientRect().bottom + 4)/h;
+    const yBot = 1 - 2*(barEl.getBoundingClientRect().top - 4)/h;
     const corners = [];
     for(const x of [-9.6,10.6]) for(const z of [-5.3,5.3]) for(const y of [0,1.5]) corners.push([x,y,z]);
-    let lo = 4, hi = 80;
+    let lo = 4, hi = 120;
     for(let it=0; it<24; it++){
       cam.dist = (lo+hi)/2; applyCam(); camera.updateMatrixWorld();
-      const ok = corners.every(([x,y,z]) => { v3.set(x,y,z).project(camera); return Math.abs(v3.x) < 0.94 && Math.abs(v3.y) < 0.9; });
+      const ok = corners.every(([x,y,z]) => { v3.set(x,y,z).project(camera); return Math.abs(v3.x) < 0.95 && v3.y < yTop && v3.y > yBot; });
       if(ok) hi = cam.dist; else lo = cam.dist;
     }
+    cam.yaw = saved;
     return hi;
   }
+  // Como o layout() do 2D: testa as duas orientacoes e fica com a que
+  // mostra o mapa maior (com 10% de margem a favor da deitada). Em pe, o
+  // castelo fica embaixo, igual ao 2D girado.
   function resetView(){
-    const portrait = innerHeight > innerWidth*1.05;
     cam.target.set(0,0,0.2);
-    cam.yaw = portrait ? Math.PI/2 : 0;   // retrato: mapa "em pe", castelo embaixo (igual ao 2D girado)
     cam.pitch = 0.95;
-    fitDist = computeFit();
+    const dLand = computeFit(0), dPort = computeFit(Math.PI/2);
+    cam.yaw = dPort < dLand*0.9 ? Math.PI/2 : 0;
+    fitDist = cam.yaw ? dPort : dLand;
     cam.dist = fitDist;
     applyCam();
   }
 
+  // Gestos. Toque = dedo que desceu e subiu rapido sem andar; dois toques
+  // seguidos no mesmo lugar recentram. (Antes o teste era no pointerdown e
+  // qualquer arrasto seguido de toque contava, e o lag do quadro podia
+  // estourar a janela de 300ms.)
   const pointers = new Map();
-  let lastPinch = 0, lastMid = null, lastTap = 0, dragMode = null;
+  let lastPinch = 0, lastMid = null, dragMode = null, lastTapAt = 0, lastTapX = 0, lastTapY = 0;
   canvas.addEventListener("pointerdown", e => {
-    canvas.setPointerCapture(e.pointerId);
-    pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
+    try { canvas.setPointerCapture(e.pointerId); } catch(_){}
+    pointers.set(e.pointerId, {x:e.clientX, y:e.clientY, x0:e.clientX, y0:e.clientY, t0:e.timeStamp, multi:pointers.size > 0});
     dragMode = (e.button === 2 || e.shiftKey) ? "pan" : "rotate";
-    if(pointers.size === 2){ const [a,b] = [...pointers.values()]; lastPinch = Math.hypot(a.x-b.x, a.y-b.y); lastMid = {x:(a.x+b.x)/2, y:(a.y+b.y)/2}; }
-    if(pointers.size === 1){
-      const now = performance.now();
-      if(now - lastTap < 300) resetView();
-      lastTap = now;
+    if(pointers.size === 2){
+      for(const q of pointers.values()) q.multi = true;
+      const [a,b] = [...pointers.values()]; lastPinch = Math.hypot(a.x-b.x, a.y-b.y); lastMid = {x:(a.x+b.x)/2, y:(a.y+b.y)/2};
     }
     hideHint();
   });
@@ -4839,13 +4869,21 @@ void main() {
     } else if(pointers.size === 2){
       const [a,b] = [...pointers.values()];
       const d = Math.hypot(a.x-b.x, a.y-b.y), mid = {x:(a.x+b.x)/2, y:(a.y+b.y)/2};
-      if(lastPinch > 0) zoomBy(lastPinch / d);
+      if(lastPinch > 0 && d > 0) zoomBy(lastPinch / d);
       if(lastMid) pan(mid.x-lastMid.x, mid.y-lastMid.y);
       lastPinch = d; lastMid = mid;
     }
     applyCam();
   });
-  function up(e){ pointers.delete(e.pointerId); lastPinch = 0; lastMid = null; }
+  function up(e){
+    const p = pointers.get(e.pointerId);
+    pointers.delete(e.pointerId); lastPinch = 0; lastMid = null;
+    if(!p || e.type !== "pointerup" || p.multi) return;
+    const isTap = Math.hypot(e.clientX-p.x0, e.clientY-p.y0) < 12 && e.timeStamp - p.t0 < 350;
+    if(!isTap){ lastTapAt = 0; return; }
+    if(lastTapAt && e.timeStamp - lastTapAt < 450 && Math.hypot(e.clientX-lastTapX, e.clientY-lastTapY) < 40){ resetView(); lastTapAt = 0; }
+    else { lastTapAt = e.timeStamp; lastTapX = e.clientX; lastTapY = e.clientY; }
+  }
   canvas.addEventListener("pointerup", up);
   canvas.addEventListener("pointercancel", up);
   canvas.addEventListener("contextmenu", e => e.preventDefault());
@@ -4856,6 +4894,10 @@ void main() {
   canvas.addEventListener("dblclick", e => e.preventDefault());
 
   const hint = document.getElementById("hint");
+  // dica certa pro aparelho: no toque nao existe roda nem shift
+  hint.innerHTML = isTouch
+    ? "<b>Arraste</b> para girar<br><b>Pinça</b> para zoom<br><b>Dois dedos</b> movem<br><b>Toque duplo</b> recentra"
+    : "<b>Arraste</b> para girar · <b>roda</b> para zoom<br><b>Shift</b> ou <b>botão direito</b> + arrastar move<br><b>Duplo clique</b> recentra";
   let hintTimer = setTimeout(hideHint, 7000);
   function hideHint(){ if(hint && !hint.classList.contains("gone")){ hint.classList.add("gone"); clearTimeout(hintTimer); } }
 
@@ -4867,29 +4909,43 @@ void main() {
   const btnReset = document.getElementById("btn-reset");
   let hiRes = true;
   const maxDpr = () => Math.min(devicePixelRatio || 1, 2);
+  // "reduzida" = metade da nativa (em tela 1x vira 0.5x -- antes o botao
+  // alternava 1x <-> 1x e nao fazia nada no Windows sem zoom)
+  const lowDpr = () => Math.max(0.5, maxDpr()/2);
   btnShadow.addEventListener("click", () => {
     const on = !sun.castShadow;
     sun.castShadow = on;
     btnShadow.setAttribute("aria-pressed", on);
-    btnShadow.querySelector("b").textContent = on ? "ligadas" : "desligadas";
+    labelShadow();
   });
   btnRes.addEventListener("click", () => {
     hiRes = !hiRes; resize();
     btnRes.setAttribute("aria-pressed", hiRes);
   });
   btnReset.addEventListener("click", resetView);
+  // rotulo curto no celular estreito (senao os botoes quebram em 2 linhas)
+  function labelShadow(){
+    const b = btnShadow.querySelector("b"), narrow = innerWidth <= 400, on = sun.castShadow;
+    b.textContent = b.dataset[(on ? "on" : "off") + (narrow ? "S" : "")];
+  }
 
+  let lastW = 0, lastH = 0;
   function resize(){
     const w = innerWidth, h = innerHeight;
-    const dpr = hiRes ? maxDpr() : 1;
+    const dpr = hiRes ? maxDpr() : lowDpr();
     renderer.setPixelRatio(dpr);
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
-    btnRes.querySelector("b").textContent = dpr.toFixed(dpr%1 ? 1 : 0) + "×";
-    const wasPortrait = resize.portrait, portrait = h > w*1.05;
-    if(wasPortrait === undefined || wasPortrait !== portrait){ resize.portrait = portrait; resetView(); }
-    else { const keep = cam.dist / fitDist; const t = cam.target.clone(), yw = cam.yaw, pt = cam.pitch; fitDist = computeFit(); cam.target.copy(t); cam.yaw = yw; cam.pitch = pt; cam.dist = fitDist*keep; applyCam(); }
+    btnRes.querySelector("b").textContent = (+dpr.toFixed(2)) + "×";
+    labelShadow();
+    // mudou a proporcao da tela (girou o aparelho, redimensionou a janela):
+    // recentra. So a barra do navegador aparecendo/sumindo: mantem a vista.
+    const reshaped = !lastW || Math.abs(w/h - lastW/lastH) > 0.25;
+    lastW = w; lastH = h;
+    if(reshaped){ resetView(); return; }
+    const keep = cam.dist / fitDist;
+    fitDist = computeFit(); cam.dist = fitDist*keep; applyCam();
   }
   addEventListener("resize", resize);
   if(window.visualViewport) visualViewport.addEventListener("resize", resize);
@@ -4919,11 +4975,13 @@ void main() {
     for(let k=0;k<2;k++){ pointAt(g.dist + g.speed*t, Q); t = Math.hypot(Q.x-sx, Q.z-sz) / ARROW_SPEED; }
     return {x:Q.x, z:Q.z, t};
   }
+  const stats = {fired:0, hits:0, misses:0, kills:0};
   function fire(g){
+    stats.fired++;
     const a = arrows.find(a => !a.active); if(!a) return;
     const sx = TOWER_POS.x + Math.sin(aimYaw)*0.2, sz = TOWER_POS.z + Math.cos(aimYaw)*0.2, sy = 1.55;
     const L = lead(g, sx, sz);
-    Object.assign(a, {active:true, t:0, dur:Math.max(0.12, L.t), sx, sy, sz, ex:L.x, ey:0.5, ez:L.z, target:g});
+    Object.assign(a, {active:true, stuck:0, t:0, dur:Math.max(0.12, L.t), sx, sy, sz, ex:L.x, ey:0.5, ez:L.z, target:g});
     a.obj.visible = true;
     bowPull = 1;
   }
@@ -4946,7 +5004,7 @@ void main() {
       }
       g.dist += g.speed*dt;
       if(g.dist > TOTAL){ g.dist = -rr(1,4); }
-      o.visible = g.dist > -0.2 && g.dist < TOTAL - 0.3;
+      o.visible = g.dist > -0.2 && g.dist < TOTAL - 0.65;   // some no portao, sem atravessar a parede
       pointAt(Math.max(0,g.dist), P);
       o.position.set(P.x - P.dz*0.12*Math.sin(g.id*1.7), 0, P.z + P.dx*0.12*Math.sin(g.id*1.7));
       const want = Math.atan2(P.dx, P.dz);
@@ -4984,29 +5042,49 @@ void main() {
     // flechas: arco parabolico ate o ponto previsto
     for(const a of arrows){
       if(!a.active) continue;
+      if(a.stuck){ a.stuck -= dt; if(a.stuck <= 0){ a.stuck = 0; a.active = false; a.obj.visible = false; } continue; }
       a.t += dt / a.dur;
       const t = Math.min(1, a.t), arc = 4*t*(1-t)*Math.min(0.9, a.dur*1.4);
       const x = a.sx + (a.ex-a.sx)*t, z = a.sz + (a.ez-a.sz)*t, y = a.sy + (a.ey-a.sy)*t + arc;
       const t2 = Math.min(1, t+0.02), arc2 = 4*t2*(1-t2)*Math.min(0.9, a.dur*1.4);
       a.obj.position.set(x,y,z);
       a.obj.lookAt(a.sx + (a.ex-a.sx)*t2, a.sy + (a.ey-a.sy)*t2 + arc2, a.sz + (a.ez-a.sz)*t2);
-      if(a.t >= 1){
-        a.active = false; a.obj.visible = false;
+      if(a.t >= 1 && !a.stuck){
         const g = a.target;
-        if(g && !g.dying){
+        // so acerta se o trasgo ainda estiver ali: pode ter morrido com uma
+        // flecha anterior ou ja ter dado a volta no loop durante o voo
+        let hit = false;
+        if(g && !g.dying && g.dist >= 0){ pointAt(g.dist, Q); hit = Math.hypot(Q.x-a.ex, Q.z-a.ez) < 0.45; }
+        if(hit){
+          stats.hits++;
+          a.active = false; a.obj.visible = false;
           g.hp--; g.hitFlash = 0.12; setFlash(g, true);
           burst(a.ex, 0.5, a.ez, g.hp <= 0 ? 0x5c7a3e : 0xf0b95f, g.hp <= 0 ? 10 : 5);
-          if(g.hp <= 0){ g.dying = 0.001; setFlash(g, false); }
+          if(g.hp <= 0){ g.dying = 0.001; setFlash(g, false); stats.kills++; }
+        } else {
+          // errou: continua a descida e crava no chao por um instante
+          stats.misses++;
+          a.stuck = 0.8;
+          const dx = a.ex-a.sx, dz = a.ez-a.sz, L = Math.hypot(dx,dz) || 1;
+          a.obj.position.set(a.ex + dx/L*0.35, 0.08, a.ez + dz/L*0.35);
+          a.obj.lookAt(a.ex + dx/L*0.6, -0.3, a.ez + dz/L*0.6);
         }
       }
     }
 
     // corvo
-    ravenDist = (ravenDist + dt*1.7) % (TOTAL + 4);
-    pointAt(Math.max(0, ravenDist-2), P);
-    raven.visible = ravenDist > 1.6 && ravenDist < TOTAL + 1.5;
-    const wob = Math.sin(time*1.3);
-    raven.position.set(P.x - P.dz*wob*0.35, 1.5 + Math.sin(time*2.1)*0.12, P.z + P.dx*wob*0.35);
+    // o corvo vem de longe (alem da caverna), segue a estrada e continua
+    // reto alem do castelo subindo ate sumir na nevoa -- nada de aparecer
+    // ou sumir no meio do ar
+    const RAVEN_OUT = 9;
+    ravenDist += dt*1.7;
+    if(ravenDist > TOTAL + RAVEN_OUT) ravenDist = -RAVEN_OUT;
+    pointAt(Math.max(0, Math.min(TOTAL, ravenDist)), P);
+    const past = ravenDist < 0 ? ravenDist : ravenDist > TOTAL ? ravenDist - TOTAL : 0;
+    if(ravenDist < 0){ P.dx = WP[1].x - WP[0].x > 0 ? 1 : -1; P.dz = 0; }
+    P.x += P.dx*past; P.z += P.dz*past;
+    const wob = Math.sin(time*1.3), lift = Math.abs(past)*0.35;
+    raven.position.set(P.x - P.dz*wob*0.35, 1.5 + lift + Math.sin(time*2.1)*0.12, P.z + P.dx*wob*0.35);
     const rw = Math.atan2(P.dx, P.dz);
     let rd = rw - raven.rotation.y; rd = Math.atan2(Math.sin(rd), Math.cos(rd));
     raven.rotation.y += rd * Math.min(1, dt*4);
@@ -5021,7 +5099,7 @@ void main() {
     flame.rotation.z = Math.sin(time*7)*0.12;
 
     // bandeiras
-    castle.traverse(m => { if(m.userData.flag) m.rotation.x = Math.sin(time*4 + m.position.z)*0.15; });
+    for(const m of flags) m.rotation.x = Math.sin(time*4 + m.position.z)*0.15;
 
     // faiscas
     for(const s of sparks){
