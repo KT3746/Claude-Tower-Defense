@@ -342,7 +342,74 @@ ser necessários de novo, a menos que o repo seja recriado do zero ou o
 workflow passe a rodar numa branch nova. Se `pages.yml` começar a falhar,
 comece descartando essas duas causas antes de mexer no YAML.
 
-## Protótipo 3D (branch `claude/prototipo-3d`, só visual)
+## Muralha 3D — jogo completo (branch `claude/prototipo-3d`, `index3d.html`)
+
+O usuário viu o protótipo e pediu "deixe 3D pronto". `index3d.html` deixou de
+ser só visual: é o **jogo inteiro** em 3D, no mesmo Artifact do protótipo
+(https://claude.ai/artifact/HnGUkw5HWPuQ9JTX1DYqtL). `index.html` (2D),
+`pages.yml` e o Artifact do jogo 2D continuam intocados.
+
+**Como foi feito (e como mexer):**
+- A regra do jogo é **a mesma do 2D, copiada** do `index.html` da branch
+  `claude/progress-md-context-kj12ok` (versão de 24/09, com corpos que tombam):
+  `TOWER_TYPES`/`ENEMY_TYPES`, ondas em pelotões, economia, `leadPoint`,
+  `gameTime`, lentidão, vitória/derrota, som, HUD, cartas, atalhos. Continua
+  tudo em pixels do mundo 900×500; só a *vista* é 3D (1 casa = 50px = 1
+  unidade, `WX()/WZ()` convertem). Se o 2D mudar balanceamento, dá pra portar
+  o trecho igual.
+- A lógica chama `spawnParticle/spawnDecal/spawnCorpse` como no 2D; no 3D
+  essas funções viram efeitos em pools fixos (faíscas, anéis, fumaça, brilho,
+  crateras/manchas/runa no chão, flecha cravada, números de dano como
+  `<span>` projetados). `fxH` diz a altura do efeito da vez.
+- `syncViews()` liga estado → cena a cada quadro: cada inimigo/torre/projétil
+  pega (ou devolve) sua vista de um pool. Projéteis voam no plano como no 2D;
+  a altura sai da fração do trajeto (`h0`→`h1`, arco maior no canhão).
+- Modelos 100% código, "assados": várias peças coloridas viram uma malha
+  com cor por vértice (`put()` + `bake()`). Inimigo = 7 malhas (corpo, 2
+  coxas, 2 canelas, 2 braços) com passada procedural; 3 materiais
+  compartilhados (normal / clarão de acerto / tinta de lentidão). Só o corpo
+  projeta sombra do sol; o resto usa sombra de contato (disco).
+- Torres: 4 tipos × 2 níveis (nível 2 = pinaculo e estandarte dourados no
+  arqueiro, faixas verdes e anéis de bronze no canhão, cristais orbitando no
+  mago, ferragens douradas na balista). Cabeça gira pra mirar; canhão dá
+  coice, balista solta os braços e o virote some no disparo.
+- Entrada: raio na cena (`pick()`) — tocar numa torre seleciona mesmo com a
+  câmera inclinada; tocar numa casa constrói. Arrastar gira (limiar de 12px do
+  2D: arrastar nunca constrói), pinça/roda aproxima, dois dedos / botão
+  direito / shift movem, `R` ou o botão no canto recentra.
+- Decoração dentro do tabuleiro some da casa quando se constrói ali e volta
+  ao vender (`cellDeco`). A lagoa saiu do tabuleiro (era casa construível).
+- Layout: o mesmo `layout()` do 2D (cromo compacto/retrato/paisagem), sem
+  girar o mundo — a câmera escolhe a orientação que mostra o mapa maior.
+- Qualidade automática: se o aparelho não segura ~45 fps, a resolução cai em
+  degraus de 0,5× até 1× (só desce). FPS real no canto do tabuleiro.
+- **Montagem**: o arquivo é HTML/CSS (casca do 2D + camada de efeitos +
+  botão recentrar) + three.js r186 inline (subconjunto empacotado com esbuild,
+  ver abaixo) + o script do jogo, legível. Dá pra editar o script direto no
+  `index3d.html`. Classe nova do three exige reempacotar a biblioteca.
+
+**Testes** (Playwright/SwiftShader, cópia instrumentada `window.__g` com
+simulação acelerada que roda a mesma sequência do `frame()` sem desenhar):
+- "Jogador robô" construindo/melhorando pela câmera (clique → raio): venceu
+  as 15 ondas em 3 de 3 partidas (12, 4 e 10 vidas); sem torres perde na
+  onda 3 com a tela de derrota. Nenhum erro de console.
+- Pools estáveis (~10 modelos por tipo de inimigo, reaproveitados),
+  geometrias na GPU constantes (20), reiniciar devolve tudo.
+- Pico (20 torres nível 2, onda 15): 411 draw calls, 78 mil triângulos.
+- Celular em pé/deitado/SE: construir e selecionar por toque, sem rolagem.
+- **Cuidado ao medir FPS no SwiftShader**: dá 3–5 fps (sem GPU). E o
+  contador do protótipo somava o intervalo já limitado a 50ms, mostrando
+  ~20 quando era ~5 — corrigido; o número real só vale no aparelho.
+- A barra de ações no iPhone SE truncava "Pausa"/"×1" ("P", "×."); no 3D
+  virou só-ícone/só-número abaixo de 360px. O 2D tem o mesmo defeito
+  (não mexi no `index.html`).
+
+**Ainda não feito no 3D** (existe ou está planejado no 2D): brasas/névoa
+ambiente e sombra de nuvens; o que está na lista "O que falta" do 2D.
+
+### Histórico: protótipo visual (antes do jogo completo)
+
+#### Protótipo 3D (branch `claude/prototipo-3d`, só visual)
 
 Pedido do usuário pra decidir se vale migrar o jogo pra 3D. Fica num arquivo
 separado, **`index3d.html`** — `index.html`, `pages.yml` e o Artifact do jogo
