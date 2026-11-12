@@ -1,3 +1,7 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Muralha</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Archivo:wght@500;600;700;800&display=swap">
@@ -569,6 +573,7 @@
     renderTowerCards();
     hideTowerInfo();
     document.getElementById("btn-speed").textContent = "Velocidade ×1";
+    document.getElementById("btn-pause").textContent = "Pausar";
     document.getElementById("btn-start-wave").disabled = false;
     document.getElementById("btn-start-wave").textContent = "Convocar Onda 1";
   }
@@ -1687,6 +1692,7 @@
       const t = TOWER_TYPES[card.dataset.key];
       card.style.opacity = (gold < t.cost) ? .55 : 1;
     });
+    if(selectedTower && selectedTower.level<2) document.getElementById("btn-upgrade").disabled = gold < TOWER_TYPES[selectedTower.type].upgradeCost;
   }
 
   function showToast(msg){
@@ -1929,7 +1935,7 @@
         const dealt = Math.max(1, p.dmg-def.armor);
         e.hp -= dealt;
         e.hitFlash = 1;
-        if(p.slow){ e.slowUntil = now+p.slow.duration; e.slowFactor = p.slow.factor; }
+        if(p.slow){ if(now>=e.slowUntil || p.slow.factor<=e.slowFactor) e.slowFactor = p.slow.factor; e.slowUntil = Math.max(e.slowUntil, now+p.slow.duration); }
         spawnParticle("dmgtext", e.x, e.y-def.topOffset*ENEMY_DRAW_SCALE-14, {
           vy:-26, life:0.7, color:"#ece3cf", text:String(dealt), layer:"front"
         });
@@ -2095,14 +2101,14 @@
   // ============================================================
   // Loop
   // ============================================================
-  let last = performance.now(), now = 0;
+  let last = performance.now(), now = 0; // now = relógio do jogo (para na pausa, acelera no ×2)
   function frame(t){
     requestAnimationFrame(frame);
     const dtReal = Math.min(0.05, (t-last)/1000);
     last = t;
-    now = t/1000;
     if(paused || ended){ render(); return; }
     const dt = dtReal*speedMul;
+    now += dt;
 
     spawnFromQueue(dt);
     updateTowers(dt);
