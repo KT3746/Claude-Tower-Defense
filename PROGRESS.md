@@ -74,10 +74,10 @@ chamado para continuar este projeto, comece lendo `index.html` inteiro — são
 ## O que falta (próximos incrementos combinados com o usuário)
 
 **Ainda dentro do Incremento 4 — conteúdo novo:**
-- **Torre de Óleo**: segunda torre nova, dano contínuo em área — reaproveita
-  a mesma estrutura já usada pro efeito de lentidão do mago (duração +
-  efeito aplicado ao inimigo), só que dano ao longo do tempo em vez de
-  lentidão.
+- ~~**Torre de Óleo**~~ — feita (2026-11): "Caldeirão", tecla 5, 95 ouro.
+  Joga óleo em área (splash 46/58) que queima por 3 s (9/16 de dano por
+  segundo, ignora armadura); não acerta voadores. Campos `burnUntil`/`burnDps`
+  no inimigo, aplicados em `updateEnemies`.
 - **Segundo mapa**: `WAYPOINTS_GRID` vira uma tabela de mapas com 2 entradas;
   escolha na tela inicial, não é possível trocar de mapa em partida em
   andamento.
